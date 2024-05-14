@@ -1,11 +1,9 @@
-import os
-import sys
 from machine import PWM, ADC, Pin
-import ssd1306
 from secrets import Wifi
 import asyncio
 from time import sleep
 from display import Display
+from launcher import Launcher
 
 min_pulse = 1000000  # ns
 max_pulse = 2000000  # ns
@@ -58,33 +56,25 @@ async def read_button(bt):
 
     return False
 
+async def launcher_status(launcher):
+    global display
+    while True:
+        display.middle(launcher.status())
+        await asyncio.sleep(1)
+
 
 async def main():
     c = asyncio.create_task(connect())
     drefresh = asyncio.create_task(display.auto_refresh())
 
-    try:
-        calibrate = False
+    launcher = Launcher(25, 26, 27)
 
+    lstatus = asyncio.create_task(launcher_status(launcher))
+
+    try:
         min_button = Pin(32, Pin.IN, Pin.PULL_DOWN)
         max_button = Pin(12, Pin.IN, Pin.PULL_DOWN)
-        esc_pin = Pin(33, Pin.OUT)
-        poti = ADC(0)
 
-        esc = PWM(esc_pin, freq=50)
-
-        if calibrate:
-            max_speed(esc)
-            dprint("Turn on the ESC now")
-            dprint("Press min button when the max is calibrated")
-            while not await read_button(min_button):
-                sleep(0.1)
-            dprint("Turn off the ESC")
-            calibrate = False
-
-        min_speed(esc)
-
-        a = 1 / 0
 
         while True:
             await asyncio.sleep(0.1)
@@ -92,16 +82,17 @@ async def main():
             max_pressed = await read_button(max_button)
 
             if min_pressed and not max_pressed:
-                min_speed(esc)
+                launcher.set_speed("all", 5)
+                launcher.configure(9, topspin=0, sidespin=1)
+                launcher.activate()
 
             if max_pressed and not min_pressed:
-                default_speed(esc)
-
+                launcher.halt()
 
 
     except Exception as e:
-        #fname = exc_tb.tb_frame.f_code.co_filename
         drefresh.cancel()
+        lstatus.cancel()
         display.top(f"Exception")
         display.middle(f"{e}")
         display.refresh()
