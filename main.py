@@ -15,6 +15,7 @@ def dprint(*args):
     global display
     txt = " ".join(args)
     display.middle(txt)
+    display.refresh()
 
 async def connect():
     import network
@@ -44,17 +45,17 @@ def default_speed(esc):
     esc.duty_ns(min_pulse + (max_pulse - min_pulse) // 30)
 
 
-async def read_button(bt):
-    if bt.value():
-        for i in range(10):
-            await  asyncio.sleep(0.02)
-            if bt.value():
-                continue
-            else:
-                return False
-        return True
+async def read_button(bt, invert = False):
+    values = []
+    for i in range(10):
+        await asyncio.sleep(0.01)
+        value = bt.value()
+        if invert:
+            value = not value
+        values.append(value)
 
-    return False
+    return sum(values) > len(values) / 2
+
 
 async def launcher_status(launcher):
     global display
@@ -62,31 +63,72 @@ async def launcher_status(launcher):
         display.middle(launcher.status())
         await asyncio.sleep(1)
 
+async def calibrate(launcher, esc_alive):
+    while True:
+        dprint("Waiting for ESC power up...")
+        esc_is_alive = await read_button(esc_alive)
+        if esc_is_alive:
+            launcher.set_speed("all", 100, force=True)
+            break
+    await asyncio.sleep(3)
+    launcher.halt()
+    dprint("Calibrated")
+    await asyncio.sleep(1)
 
 async def main():
     c = asyncio.create_task(connect())
     drefresh = asyncio.create_task(display.auto_refresh())
 
     launcher = Launcher(25, 26, 27)
+    launcher.halt()
+
+    min_button = Pin(13, Pin.IN, Pin.PULL_DOWN)
+    max_button = Pin(12, Pin.IN, Pin.PULL_DOWN)
+    esc_alive = Pin(33, Pin.IN, Pin.PULL_DOWN)
+    a_button = Pin(17, Pin.IN, Pin.PULL_UP)
+    b_button = Pin(18, Pin.IN, Pin.PULL_UP)
+    c_button = Pin(19, Pin.IN, Pin.PULL_UP)
+
+    offline = True
+    if not offline:
+        if not await read_button(esc_alive):
+            await calibrate(launcher, esc_alive)
 
     lstatus = asyncio.create_task(launcher_status(launcher))
 
     try:
-        min_button = Pin(32, Pin.IN, Pin.PULL_DOWN)
-        max_button = Pin(12, Pin.IN, Pin.PULL_DOWN)
-
 
         while True:
             await asyncio.sleep(0.1)
             min_pressed = await read_button(min_button)
             max_pressed = await read_button(max_button)
+            a = await read_button(a_button, invert = True)
+            b = await read_button(b_button, invert = True)
+            c = await read_button(c_button, invert = True)
 
-            if min_pressed and not max_pressed:
-                launcher.set_speed("all", 5)
-                launcher.configure(9, topspin=0, sidespin=1)
+            buttons = ""
+            buttons += "A" if a else "_"
+            buttons += "B" if b else "_"
+            buttons += "C" if c else "_"
+
+            display.top(buttons)
+
+            if "A" in buttons:
+                launcher.ease()
+
+            if "B" in buttons:
                 launcher.activate()
 
-            if max_pressed and not min_pressed:
+            if "C" in buttons:
+                topspin = 0.5
+            else:
+                topspin = 0
+
+            if max_pressed:
+                launcher.configure(5, topspin=topspin, sidespin=0)
+                launcher.activate()
+
+            if min_pressed:
                 launcher.halt()
 
 

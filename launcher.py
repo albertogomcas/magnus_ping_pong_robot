@@ -9,7 +9,7 @@ class ESC:
         self.max_pulse = 2000000  # ns
         self.speed = 0
         self._current_pulse = 0
-        self._idle_factor = 0.25
+        self._idle_factor = 0.5
         self._idling = False
         self.limit = 100
         self.set_speed(0)
@@ -28,7 +28,7 @@ class ESC:
             print(f"Capping speed to limit {self.limit}")
             speed_pc = self.limit
 
-        pulse = int(speed_pc * (self.max_pulse - self.min_pulse) + self.min_pulse)
+        pulse = int(speed_pc/100 * (self.max_pulse - self.min_pulse) + self.min_pulse)
         self.speed = speed_pc
         self._current_pulse = pulse
 
@@ -56,16 +56,16 @@ class Launcher:
             "right": ESC(right, "R"),
         }
 
-    def set_speed(self, motor, percentage):
+    def set_speed(self, motor, percentage, force=False):
         assert 0 <= percentage <= 100
         assert motor in ["all", "bottom", "left", "right"]
 
         if motor == "all":
             for motor_name, motor_esc in self._esc.items():
-                motor_esc.set_speed(percentage)
+                motor_esc.set_speed(percentage, force)
 
         else:
-            self._esc[motor].set_speed(percentage)
+            self._esc[motor].set_speed(percentage, force)
 
 
     def activate(self):
