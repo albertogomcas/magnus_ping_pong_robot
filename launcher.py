@@ -27,6 +27,8 @@ class ESC:
         if speed_pc > self.limit:
             print(f"Capping speed to limit {self.limit}")
             speed_pc = self.limit
+        if speed_pc <= 0:
+            speed_pc = 0
 
         pulse = int(speed_pc/100 * (self.max_pulse - self.min_pulse) + self.min_pulse)
         self.speed = speed_pc
@@ -91,15 +93,14 @@ class Launcher:
         # base speed is the given setting
         base_speed = speed
         # a differential top/bottom speed is calculated based on the spin
+
         bottom_speed = base_speed * (1 - topspin/2) # half speed when topspin is maximum
-        left_top_speed = base_speed * (1 + topspin/2)
-        right_top_speed = base_speed * (1 + topspin/2)
-
         # a differential left/right speed is calculated based on side spin
-        side_speed_diff = 0.5 * left_top_speed * sidespin
+        side_speed_diff = sidespin * base_speed
 
-        left_speed = max(0, left_top_speed - side_speed_diff)
-        right_speed = max(0, right_top_speed + side_speed_diff)
+        left_speed = base_speed * (1 - sidespin/2)
+        right_speed = base_speed * (1 + sidespin/2)
+
 
         print(f"Configuring for speed {speed}, top {topspin}, side {sidespin}")
         print(f"Bottom {bottom_speed:.1f}, Left {left_speed:.1f}, Right {right_speed:.1f}")

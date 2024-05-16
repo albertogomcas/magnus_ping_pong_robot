@@ -85,11 +85,11 @@ async def main():
     min_button = Pin(13, Pin.IN, Pin.PULL_DOWN)
     max_button = Pin(12, Pin.IN, Pin.PULL_DOWN)
     esc_alive = Pin(33, Pin.IN, Pin.PULL_DOWN)
-    a_button = Pin(17, Pin.IN, Pin.PULL_UP)
-    b_button = Pin(18, Pin.IN, Pin.PULL_UP)
-    c_button = Pin(19, Pin.IN, Pin.PULL_UP)
+    down_button = Pin(17, Pin.IN, Pin.PULL_UP)
+    up_button = Pin(18, Pin.IN, Pin.PULL_UP)
+    select_button = Pin(19, Pin.IN, Pin.PULL_UP)
 
-    offline = True
+    offline = False
     if not offline:
         if not await read_button(esc_alive):
             await calibrate(launcher, esc_alive)
@@ -98,34 +98,50 @@ async def main():
 
     try:
 
+        choice_index = 0
+        choices = ["SPEED", "TOPSPIN", "SIDESPIN"]
+        subchoice_index = {"SPEED": 2,
+                           "TOPSPIN":  2,
+                           "SIDESPIN": 2,
+                           }
+        subchoices = {
+            "SPEED": [5, 6, 7, 8, 9, 10],
+            "TOPSPIN": [-1, -0.5, 0, 0.5, 1],
+            "SIDESPIN": [-1, -0.5, 0, 0.5, 1],
+        }
+
+
         while True:
             await asyncio.sleep(0.1)
             min_pressed = await read_button(min_button)
             max_pressed = await read_button(max_button)
-            a = await read_button(a_button, invert = True)
-            b = await read_button(b_button, invert = True)
-            c = await read_button(c_button, invert = True)
+            down = await read_button(down_button, invert = True)
+            up = await read_button(up_button, invert = True)
+            select = await read_button(select_button, invert = True)
 
-            buttons = ""
-            buttons += "A" if a else "_"
-            buttons += "B" if b else "_"
-            buttons += "C" if c else "_"
+            if select:
+                choice_index +=1
+                if choice_index == len(choices):
+                    choice_index = 0
 
-            display.top(buttons)
+            if up:
+                key = choices[choice_index]
+                if subchoice_index[key] < len(subchoices[key]) - 1:
+                    subchoice_index[key] += 1
 
-            if "A" in buttons:
-                launcher.ease()
+            if down:
+                key = choices[choice_index]
+                if subchoice_index[key] > 0:
+                    subchoice_index[key] -= 1
 
-            if "B" in buttons:
-                launcher.activate()
+            topspin = subchoices["TOPSPIN"][subchoice_index["TOPSPIN"]]
+            sidespin = subchoices["SIDESPIN"][subchoice_index["SIDESPIN"]]
+            speed = subchoices["SPEED"][subchoice_index["SPEED"]]
 
-            if "C" in buttons:
-                topspin = 0.5
-            else:
-                topspin = 0
+            display.top(f"{choices[choice_index][:2]}|S{speed}T{topspin}D{sidespin}")
 
             if max_pressed:
-                launcher.configure(5, topspin=topspin, sidespin=0)
+                launcher.configure(speed=speed, topspin=topspin, sidespin=sidespin)
                 launcher.activate()
 
             if min_pressed:
@@ -138,6 +154,7 @@ async def main():
         display.top(f"Exception")
         display.middle(f"{e}")
         display.refresh()
+        raise
 
 if __name__ == '__main__':
     asyncio.run(main())
