@@ -4,6 +4,7 @@ import asyncio
 from time import sleep
 from display import Display
 from launcher import Launcher
+from feeder import Feeder
 
 min_pulse = 1000000  # ns
 max_pulse = 2000000  # ns
@@ -81,6 +82,8 @@ async def main():
 
     launcher = Launcher(25, 26, 27)
     launcher.halt()
+    feeder = Feeder(pin=15)
+    feeder.halt()
 
     min_button = Pin(13, Pin.IN, Pin.PULL_DOWN)
     max_button = Pin(12, Pin.IN, Pin.PULL_DOWN)
@@ -90,9 +93,6 @@ async def main():
     select_button = Pin(19, Pin.IN, Pin.PULL_UP)
 
     offline = False
-    if not offline:
-        if not await read_button(esc_alive):
-            await calibrate(launcher, esc_alive)
 
     lstatus = asyncio.create_task(launcher_status(launcher))
 
@@ -101,18 +101,22 @@ async def main():
         choice_index = 0
         choices = ["SPEED", "TOPSPIN", "SIDESPIN"]
         subchoice_index = {"SPEED": 2,
-                           "TOPSPIN":  2,
-                           "SIDESPIN": 2,
+                           "TOPSPIN":  4,
+                           "SIDESPIN": 4,
                            }
         subchoices = {
-            "SPEED": [5, 6, 7, 8, 9, 10],
-            "TOPSPIN": [-1, -0.5, 0, 0.5, 1],
-            "SIDESPIN": [-1, -0.5, 0, 0.5, 1],
+            "SPEED": [1, 2, 3, 4, 5],
+            "TOPSPIN": [-8, -6, -4, -2, 0, 2 ,4 ,8],
+            "SIDESPIN": [-8, -6, -4, -2, 0, 2 ,4 ,8],
         }
 
 
         while True:
-            await asyncio.sleep(0.1)
+            await asyncio.sleep(0.05)
+            if not offline:
+                if not await read_button(esc_alive):
+                    await calibrate(launcher, esc_alive)
+
             min_pressed = await read_button(min_button)
             max_pressed = await read_button(max_button)
             down = await read_button(down_button, invert = True)
@@ -134,21 +138,24 @@ async def main():
                 if subchoice_index[key] > 0:
                     subchoice_index[key] -= 1
 
-            topspin = subchoices["TOPSPIN"][subchoice_index["TOPSPIN"]]
-            sidespin = subchoices["SIDESPIN"][subchoice_index["SIDESPIN"]]
-            speed = subchoices["SPEED"][subchoice_index["SPEED"]]
+            topspin = subchoices["TOPSPIN"][subchoice_index["TOPSPIN"]] / 10
+            sidespin = subchoices["SIDESPIN"][subchoice_index["SIDESPIN"]] / 10
+            speed = subchoices["SPEED"][subchoice_index["SPEED"]] + 5
 
             display.top(f"{choices[choice_index][:2]}|S{speed}T{topspin}D{sidespin}")
 
             if max_pressed:
                 launcher.configure(speed=speed, topspin=topspin, sidespin=sidespin)
                 launcher.activate()
+                feeder.activate()
 
             if min_pressed:
                 launcher.halt()
+                feeder.halt()
 
 
     except Exception as e:
+        feeder.halt()
         drefresh.cancel()
         lstatus.cancel()
         display.top(f"Exception")
