@@ -57,6 +57,7 @@ class Launcher:
             "left": ESC(left, "L"),
             "right": ESC(right, "R"),
         }
+        cap = 50
 
     def set_speed(self, motor, percentage, force=False):
         assert 0 <= percentage <= 100

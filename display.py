@@ -35,4 +35,4 @@ class Display:
     async def auto_refresh(self):
         while True:
             self.refresh()
-            await asyncio.sleep(0.1)
+            await asyncio.sleep(0.2)
