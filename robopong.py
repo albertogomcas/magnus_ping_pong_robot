@@ -25,10 +25,10 @@ class UsedPins():
     LAUNCHER_BOTTOM = 33
     LAUNCHER_RIGHT = 25
 
-    #FEED_1 = 18 # blue
-    #FEED_2 = 19 # green
-    #FEED_3 = 1 # red
-    #FEED_4 = 3 # white
+    FEED_1 = 16 # blue
+    FEED_2 = 17 # green
+    FEED_3 = 18 # red
+    FEED_4 = 5 # white
 
     @classmethod
     def sanity_check(cls):
@@ -115,10 +115,10 @@ async def main():
     #up_button = Pin(UsedPins.UP, Pin.IN, Pin.PULL_UP)
     #select_button = Pin(UsedPins.MENU, Pin.IN, Pin.PULL_UP)
 
-    #feeder = Feeder([UsedPins.FEED_1, UsedPins.FEED_2, UsedPins.FEED_3, UsedPins.FEED_4])
-    #feeder.halt()
+    feeder = Feeder([UsedPins.FEED_1, UsedPins.FEED_2, UsedPins.FEED_3, UsedPins.FEED_4])
+    feeder.halt()
 
-    #feed_task = asyncio.create_task(feeder.run())
+    feed_task = asyncio.create_task(feeder.run())
 
     offline = False
     calibrated = False
@@ -155,7 +155,6 @@ async def main():
                 if value:
                     calibrate(launcher)
                     calibrated = True
-                    break
                     wait = 0
 
             #down = await read_button(down_button, invert = True)
@@ -189,13 +188,13 @@ async def main():
                     previous_active = True
                     launcher.configure(speed=speed, topspin=topspin, sidespin=sidespin)
                     launcher.activate()
-                    #feeder.activate()
+                    feeder.activate()
                     display.top(f"A|{choices[choice_index][:2]}|S{speed}T{topspin}D{sidespin}")
 
                 else:
                     previous_active = False
                     launcher.halt()
-                    #feeder.halt()
+                    feeder.halt()
                     display.top(f"H|{choices[choice_index][:2]}|S{speed}T{topspin}D{sidespin}")
 
             if not supply.esc_alive():
@@ -203,7 +202,7 @@ async def main():
                 continue
 
     except Exception as e:
-        #feeder.halt()
+        feeder.halt()
         drefresh.cancel()
         #lstatus.cancel()
         #feed_task.cancel()
