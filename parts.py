@@ -1,4 +1,39 @@
 from machine import Pin, PWM
+import Stepper
+import asyncio
+
+class Feeder:
+    """Uses a stepper to feed balls into the launcher"""
+    def __init__(self, pins):
+        self.pin1 = Pin(pins[0], Pin.OUT)
+        self.pin2 = Pin(pins[1], Pin.OUT)
+        self.pin3 = Pin(pins[2], Pin.OUT)
+        self.pin4 = Pin(pins[3], Pin.OUT)
+
+        self.stepper = Stepper.create(self.pin1, self.pin2, self.pin3, self.pin4, delay=5, mode="HALF_STEP")
+        self.interval = 4
+        self.active = False
+
+    def set_ball_interval(self, seconds):
+        self.interval = max(1, seconds)
+
+    async def feed_one(self):
+        await self.stepper.async_step(50, -1)
+
+    async def run(self):
+        while True:
+            await asyncio.sleep(self.interval)
+            if self.active:
+                await self.feed_one()
+
+    def activate(self):
+        self.active = True
+
+    def halt(self):
+        self.active = False
+        self.stepper.reset()
+
+
 
 class ESC:
     def __init__(self, pin, name, freq=50):
@@ -13,7 +48,6 @@ class ESC:
         self._idling = False
         self.limit = 100
         self.set_speed(0)
-
 
     def calibrate_1(self):
         """Must be called before the ESC is powered up"""
@@ -30,16 +64,18 @@ class ESC:
         if speed_pc <= 0:
             speed_pc = 0
 
-        pulse = int(speed_pc/100 * (self.max_pulse - self.min_pulse) + self.min_pulse)
+        pulse = int(speed_pc / 100 * (self.max_pulse - self.min_pulse) + self.min_pulse)
         self.speed = speed_pc
         self._current_pulse = pulse
 
         if force:
             self.pwm.duty_ns(pulse)
             self.spin_up()
+
     def idle_down(self):
         self.pwm.duty_ns(int(self._current_pulse * self._idle_factor))
         self._idling = True
+
     def spin_up(self):
         self.pwm.duty_ns(self._current_pulse)
         self._idling = False
@@ -48,9 +84,9 @@ class ESC:
         idling = " " if not self._idling else "I"
         return f"{self.name}{self.speed:2.0f}{idling}"
 
-
 class Launcher:
     """Shoots balls using 3 brushless motors"""
+
     def __init__(self, bottom, left, right):
         self._esc = {
             "bottom": ESC(bottom, name="B"),
@@ -69,7 +105,6 @@ class Launcher:
 
         else:
             self._esc[motor].set_speed(percentage, force)
-
 
     def activate(self):
         """Accelerate towards launching speed"""
@@ -95,13 +130,12 @@ class Launcher:
         base_speed = speed
         # a differential top/bottom speed is calculated based on the spin
 
-        bottom_speed = base_speed * (1 - topspin/2) # half speed when topspin is maximum
+        bottom_speed = base_speed * (1 - topspin / 2)  # half speed when topspin is maximum
         # a differential left/right speed is calculated based on side spin
         side_speed_diff = sidespin * base_speed
 
-        left_speed = base_speed * (1 - sidespin/2)
-        right_speed = base_speed * (1 + sidespin/2)
-
+        left_speed = base_speed * (1 - sidespin / 2)
+        right_speed = base_speed * (1 + sidespin / 2)
 
         print(f"Configuring for speed {speed}, top {topspin}, side {sidespin}")
         print(f"Bottom {bottom_speed:.1f}, Left {left_speed:.1f}, Right {right_speed:.1f}")
@@ -117,7 +151,3 @@ class Launcher:
             status += f"{self._esc[mname].status()} "
 
         return status
-
-
-if __name__ == "__main__":
-    launcher = Launcher(1, 2, 3)
