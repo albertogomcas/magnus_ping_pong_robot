@@ -49,7 +49,7 @@ class Supply():
         self.esc_alive_pin = ADC(Pin(UsedPins.ESC_ALIVE))
 
     def esc_alive(self):
-        return self.esc_alive_pin.read() > 2000
+        return self.esc_alive_pin.read() > 3500
 
 
 async def connect():
@@ -129,7 +129,7 @@ async def main():
 
         choice_index = 0
         choices = ["SPEED", "TOPSPIN", "SIDESPIN"]
-        subchoice_index = {"SPEED": 2,
+        subchoice_index = {"SPEED": 1,
                            "TOPSPIN":  4,
                            "SIDESPIN": 4,
                            }

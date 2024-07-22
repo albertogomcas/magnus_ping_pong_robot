@@ -1,11 +1,11 @@
 from machine import SoftI2C, Pin
-import ssd1306
+import sh1106
 import asyncio
 
 class Display:
-    def __init__(self, sda, scl, width=128, height=32):
+    def __init__(self, sda, scl, width=128, height=64):
         i2c = SoftI2C(sda=Pin(sda), scl=Pin(scl))
-        self._display = ssd1306.SSD1306_I2C(width, height, i2c)
+        self._display = sh1106.SH1106_I2C(width, height, i2c, rotate=180)
         self._display.text("Starting up", 0, 0, 1)
         self._display.show()
 

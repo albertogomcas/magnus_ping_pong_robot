@@ -18,7 +18,7 @@ class Feeder:
         self.interval = max(1, seconds)
 
     async def feed_one(self):
-        await self.stepper.async_step(50, -1)
+        await self.stepper.async_step(30, -1)
 
     async def run(self):
         while True:
