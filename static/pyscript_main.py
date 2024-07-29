@@ -1,4 +1,4 @@
-from pyscript import document
+from pyscript import document, fetch
 #import test
 def execute(event):
     input_text = document.querySelector("#command")
@@ -6,10 +6,4 @@ def execute(event):
     output_div = document.querySelector("#output")
     output_div.innerText = f"your command was {command}"
 
-    if command == "on":
-        pass
-        #test.on()
-
-    if command == "off":
-        pass
-        #test.off()
+    fetch(f"/cmd/{command}")
