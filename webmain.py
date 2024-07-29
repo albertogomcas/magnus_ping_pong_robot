@@ -1,8 +1,17 @@
 from microdot import Microdot, redirect, Response, send_file
 from machine import Pin
+import asyncio
 
 pin = Pin(12, Pin.OUT)
 pin.off()
+
+async def blink(n, up=1, down=1):
+    for i in range(0, n):
+        pin.on()
+        await asyncio.sleep(up)
+        pin.off()
+        await asyncio.sleep(down)
+
 
 Response.default_content_type = 'text/html'
 
@@ -19,19 +28,27 @@ async def static(request, path):
     return send_file("static/"+path)
 
 @esp_app.route("/cmd/<command>")
-def cmd(request, command):
+async def cmd(request, command):
     actions = {
         "on": pin.on,
         "off": pin.off,
+        "blink": blink,
 
     }
+    print(command)
     try:
-        actions[command]()
-        return redirect("/")
-    except:
-        return "Invalid command", 400
+        cmd, *args = command.split(",")
+        print(cmd, args)
+        if args:
+            await actions[cmd](*[float(a) for a in args])
+        else:
+            actions[cmd]()
+    except KeyError:
+        return "Not found", 404
+    except Exception as e:
+        return f"Exception {cmd} {e}", 404
 
-
+    return "Success", 200
 
 
 if __name__ == "__main__":

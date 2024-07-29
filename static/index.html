@@ -11,9 +11,19 @@
 
 <body>
   <h1>Robopong Control</h1>
-  <input type="text" name="command" id="command" placeholder="Type a command..." />
-  <button py-click="execute">Execute</button>
+  Command  <input type="text" name="command" id="command" placeholder="Type a command..." /> <button id="execute">Execute</button>
   <div id="output"></div>
+  <div id="parameters">
+      <h2>Parameters</h2>
+      <select name="selection" id="selection">
+                        <option>0</option>
+                        <option>1</option>
+      </select>
+     <div class="slidecontainer">
+         <input type="range" min="1" max="100" value="50" class="slider" id="myRange">
+     </div>
+     <button id="Update_params">Update</button>
+  </div>
   <script type="py" src="static/pyscript_main.py" config="static/pyscript.json"></script>
 </body>
 
