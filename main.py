@@ -1,8 +1,8 @@
-from machine import Pin, PWM
+from machine import Pin
 #from robopong import main
-import asyncio
 #from drv8825 import DRV8825
 import network
+from secrets import Wifi
 
 program_pin = Pin(19, Pin.IN, Pin.PULL_UP)
 if not program_pin.value():
@@ -18,7 +18,23 @@ else:
     #pin = Pin(18, Pin.OUT)
     #pwm = PWM(pin, freq=50)
 
-    ap = network.WLAN(network.AP_IF)
-    ap.active(True)
-    ap.config(essid="robopong", key="topspin")
-    
+pin = Pin(12, Pin.OUT)
+pin.on()
+
+nic = network.WLAN(network.STA_IF)
+nic.active(True)
+nic.connect(Wifi.ssid, Wifi.password)
+nic.ifconfig(('10.0.0.47', '255.255.255.0', '10.0.0.138', '8.8.8.8'))
+print(nic.isconnected())
+print(nic.ifconfig())
+
+pin.off()
+
+from webmain import esp_app
+
+
+try:
+    esp_app.run(port=80, debug=True)
+except:
+    esp_app.shutdown()
+    raise
