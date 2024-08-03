@@ -1,7 +1,0 @@
-{
-    "runtime": "micropython",
-    "packages": [],
-    "files": {
-        "test.py": "test.py"
-    }
-}

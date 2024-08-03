@@ -28,14 +28,7 @@ else:
     except:
         esp_app.shutdown()
         raise
-    #th = _thread.start_new_thread(main_loop, tuple())
-    #asyncio.run(main())
 
-    #stepper = DRV8825(step_pin=5)
-
-    #stepper.steps(1000)
-    #pin = Pin(18, Pin.OUT)
-    #pwm = PWM(pin, freq=50)
 
 
 
