@@ -1,5 +1,5 @@
 from microdot import Microdot, Response
-from machine import Pin
+from machine import Pin, UART
 import asyncio
 from ujrpc import JRPCService
 import time
@@ -10,11 +10,14 @@ jrpc.debug = True
 pin = Pin(12, Pin.OUT)
 pin.off()
 
+uart = UART(2, baudrate=115200, tx=Pin(25), rx=Pin(26))
+
+app = Microdot()
+
 @jrpc.fn(name="led_on")
 def led_on(r):
      pin.on()
      return "led is on"
-
 
 @jrpc.fn(name="led_off")
 def led_off(r):
@@ -33,6 +36,16 @@ def blink(r, n, up=1, down=1):
 
     return "blinked"
 
+@jrpc.fn(name="gcode")
+def gcode(r, raw):
+    uart.write(b"\r\n\r\n")
+    time.sleep(2)
+    uart.flush()
+    uart.write(raw.encode("ascii")+f"\n")
+    time.sleep(1)
+    ret = uart.readline()
+    return ret
+
 Response.default_content_type = 'text/html'
 
 esp_app = Microdot()
@@ -44,4 +57,3 @@ async def index(request):
 @esp_app.route('/rpc', methods=["POST"])
 async def rpc(request):
     return jrpc.handle_rpc(request.json)
-
