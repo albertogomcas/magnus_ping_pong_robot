@@ -47,22 +47,23 @@ class State(rx.State):
         self.feed_rate = value
 
 
-class GCodeState(rx.State):
+
+class ArduinoState(rx.State):
     form_data: dict = {}
 
-    def send_gcode(self, data):
+    def send_command(self, data):
         print(data)
         self.form_data = data
 
-        if not data['gcode']:
+        if not data['arduino']:
             return
 
         url = robot_url + "/rpc"
 
         payload = {
         "jsonrpc": "2.0",
-        "method": "gcode",
-        "params": [data['gcode']],
+        "method": "arduino",
+        "params": ["<" + data['arduino'] + ">"],
         "id": 1,
         }
         headers = {'Content-Type': 'application/json'}
@@ -112,11 +113,11 @@ def index() -> rx.Component:
          rx.card(
              rx.form.root(
                  rx.vstack(
-                     rx.heading("GCode sender"),
-                     rx.input(name="gcode", placeholder="Enter GCode...", type="text"),
+                     rx.heading("Arduino sender"),
+                     rx.input(name="arduino", placeholder="Enter command...", type="text"),
                      rx.button("Send", type="submit"),
                  ),
-             on_submit=GCodeState.send_gcode,
+             on_submit=ArduinoState.send_command,
              reset_on_submit=False,
              width="100%",
          ),

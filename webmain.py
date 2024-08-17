@@ -12,8 +12,6 @@ pin.off()
 
 uart = UART(2, baudrate=115200, tx=Pin(25), rx=Pin(26))
 
-app = Microdot()
-
 @jrpc.fn(name="led_on")
 def led_on(r):
      pin.on()
@@ -36,8 +34,8 @@ def blink(r, n, up=1, down=1):
 
     return "blinked"
 
-@jrpc.fn(name="gcode")
-def gcode(r, raw):
+@jrpc.fn(name="arduino")
+def arduino(r, raw):
     uart.write(b"\r\n\r\n")
     time.sleep(2)
     uart.flush()
@@ -52,7 +50,7 @@ esp_app = Microdot()
 
 @esp_app.get("/")
 async def index(request):
-    return "ropbopong"
+    return "robopong"
 
 @esp_app.route('/rpc', methods=["POST"])
 async def rpc(request):
