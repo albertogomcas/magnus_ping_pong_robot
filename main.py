@@ -1,9 +1,8 @@
 from machine import Pin
-#from robopong import main
-#from drv8825 import DRV8825
 import network
 from secrets import Wifi
-from webmain import esp_app
+from webmain import esp_app, main
+import asyncio
 
 def connect():
     nic = network.WLAN(network.STA_IF)
@@ -14,7 +13,9 @@ def connect():
     print(nic.ifconfig())
 
 def run():
+    asyncio.create_task(main())
     esp_app.run(port=80, debug=True)
+
 
 program_pin = Pin(19, Pin.IN, Pin.PULL_UP)
 

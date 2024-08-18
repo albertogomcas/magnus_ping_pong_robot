@@ -1,8 +1,120 @@
 from microdot import Microdot, Response
-from machine import Pin, UART
-import asyncio
+from machine import Pin, ADC
 from ujrpc import JRPCService
 import time
+from arduino import arduino_uart
+from parts import Feeder, Launcher
+import asyncio
+
+class UsedPins():
+    PROGRAM = 19  # pullup
+    ESC_ALIVE = 36# adc
+    LAUNCHER_LEFT = 32
+    LAUNCHER_BOTTOM = 33
+    LAUNCHER_RIGHT = 25
+
+    @classmethod
+    def sanity_check(cls):
+        all_numbers = []
+        for key, value in cls.__dict__.items():
+            if not key.startswith("__"):
+                if value in all_numbers:
+                    print(f"{key} Pin {value} already in use")
+                    raise ValueError(f"{key} Pin {value} already in use")
+                else:
+                    all_numbers.append(value)
+
+class Supply():
+    def __init__(self):
+        self.esc_alive_pin = ADC(Pin(UsedPins.ESC_ALIVE))
+
+    def esc_alive(self):
+        return self.esc_alive_pin.read() > 3500
+
+
+
+UsedPins.sanity_check()
+
+
+supply = Supply()
+feeder = Feeder(axis="x")
+feeder.halt()
+launcher = Launcher(UsedPins.LAUNCHER_BOTTOM, UsedPins.LAUNCHER_LEFT, UsedPins.LAUNCHER_RIGHT)
+launcher.halt()
+
+
+
+def calibrate(launcher):
+    launcher.set_speed("all", 100, force=True)
+    time.sleep(3)
+    launcher.halt()
+    launcher.set_speed("all", 0)
+    print("Calibrated")
+    time.sleep(1)
+
+async def activate(launcher, feeder):
+    launcher.activate()
+    feeder.activate()
+
+async def halt(launcher, feeder):
+    launcher.halt()
+    feeder.halt()
+
+async def main():
+
+    launcher.halt()
+    feeder.halt()
+
+    feed_task = asyncio.create_task(feeder.run())
+
+    offline = False
+    calibrated = False
+
+    try:
+        previous_active = None
+
+        wait = 0
+
+        while True:
+            await asyncio.sleep(0.1)
+            active = True
+
+            if not offline and not calibrated:
+                value = supply.esc_alive()
+                wait += 1
+
+                if value:
+                    calibrate(launcher)
+                    calibrated = True
+                    wait = 0
+
+            topspin = 0 / 10
+            sidespin = 0 / 10
+            speed = 3 + 5
+
+            if active != previous_active:
+                if active:
+                    previous_active = True
+                    launcher.configure(speed=speed, topspin=topspin, sidespin=sidespin)
+                    launcher.activate()
+                    feeder.activate()
+
+                else:
+                    previous_active = False
+                    launcher.halt()
+                    feeder.halt()
+
+            if not supply.esc_alive():
+                calibrated = False
+                continue
+
+    except Exception as e:
+        launcher.halt()
+        feeder.halt()
+        feed_task.cancel()
+        raise
+
+
 
 jrpc = JRPCService(api_version=1)
 jrpc.debug = True
@@ -10,38 +122,32 @@ jrpc.debug = True
 pin = Pin(12, Pin.OUT)
 pin.off()
 
-uart = UART(2, baudrate=115200, tx=Pin(25), rx=Pin(26))
 
-@jrpc.fn(name="led_on")
-def led_on(r):
-     pin.on()
-     return "led is on"
 
-@jrpc.fn(name="led_off")
-def led_off(r):
-     pin.off()
-     return "led is off"
-
-@jrpc.fn(name="blink")
-def blink(r, n, up=1, down=1):
-    for i in range(0, n):
+@jrpc.fn(name="sync_settings")
+def sync_settings(r, settings):
+    if settings["active"]:
         pin.on()
-        #await asyncio.sleep(up)
-        time.sleep_ms(int(up*1000))
+        feeder.activate()
+    else:
         pin.off()
-        #await asyncio.sleep(down)
-        time.sleep_ms(int(down*1000))
+        feeder.halt()
 
-    return "blinked"
+    bps = settings["feed_rate"]
+    feeder.set_ball_interval(1/bps)
+
+    return "ok"
+
 
 @jrpc.fn(name="arduino")
 def arduino(r, raw):
-    uart.write(b"\r\n\r\n")
-    time.sleep(2)
-    uart.flush()
-    uart.write(raw.encode("ascii")+f"\n")
-    time.sleep(1)
-    ret = uart.readline()
+    arduino_uart.write(b"\r\n\r\n")
+    time.sleep(0.1)
+    arduino_uart.flush()
+    arduino_uart.write((raw+"\r\n").encode("ascii"))
+    time.sleep(0.1)
+    ret = arduino_uart.readline()
+    print(f"arduino: {ret}")
     return ret
 
 Response.default_content_type = 'text/html'

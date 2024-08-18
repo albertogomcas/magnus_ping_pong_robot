@@ -11,6 +11,8 @@ send commands via serial surrounded by <>
 
 the steps/speed are scaled by the stepped mode 1/1, 1/2 ... 1/32 defined below
 
+FIXME: wrap-around for continuous rotation
+
 */
 
 #include <AccelStepper.h>
@@ -36,6 +38,8 @@ String MOVEBY = "mvby";
 String MOVETO = "mvto";
 String STOP = "stop";
 String SPEED = "sped";
+String ON = "on";
+String OFF = "off";
 
 
 void setup() {
@@ -94,10 +98,12 @@ void interpret() {
     if (recv.startsWith(MOVETO)) move_to(recv.charAt(5), recv.substring(7).toInt());
     if (recv.startsWith(SPEED)) set_speed(recv.charAt(5), recv.substring(7).toInt());
     if (recv.startsWith(STOP)) stop(recv.charAt(5));
+    if (recv.startsWith(ON)) digitalWrite(enablePin, LOW);
+    if (recv.startsWith(OFF)) digitalWrite(enablePin, HIGH);
 
 
     newData = false;
-    Serial.write("ok");
+    Serial.println(receivedChars);
   }
 }
 
@@ -117,7 +123,7 @@ void home(char axis) {
   if (axis == 'y') stepper = &steppery;
   if (axis == 'z') stepper = &stepperz;
   if (stepper != NULL) {
-    Serial.print("TBD homing");
+    Serial.println("TBD homing");
   };
 }
 
@@ -158,4 +164,6 @@ void loop() {
   stepperx.run();
   steppery.run();
   stepperz.run();
+  if ((stepperx.distanceToGo() == 0) & (steppery.distanceToGo() == 0) & (stepperz.distanceToGo() == 0)) digitalWrite(enablePin, HIGH);
+  else digitalWrite(enablePin, LOW);
 }

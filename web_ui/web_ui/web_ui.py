@@ -29,23 +29,46 @@ class State(rx.State):
     feed_rate: float = 0
 
     def sync_settings(self):
-        print(self)
+        url = robot_url + "/rpc"
 
-    def set_spin_angle(self, value):
-        self.spin_angle = value
+        payload = {
+            "jsonrpc": "2.0",
+            "method": "sync_settings",
+            "params": {"settings" : dict(
+                active=self.active,
+                spin_angle=self.spin_angle,
+                spin_strength=self.spin_strength,
+                pan=self.pan,
+                tilt=self.tilt,
+                feed_rate=float(self.feed_rate),
+            ),
+            },
+            "id": 1,
+        }
+        headers = {'Content-Type': 'application/json'}
 
-    def set_spin_strength(self, value):
-        self.spin_strength = value
+        print(payload)
 
-    def set_pan(self, value):
-        self.pan = value
+        response = requests.post(url, headers=headers, json=payload, verify=False)
+        print(response)
 
-    def set_tilt(self, value):
-        self.tilt = value
+    def set_spin_angle(self, value:int):
+        self.spin_angle = value[0]
 
-    def set_feed_rate(self, value):
-        self.feed_rate = value
+    def set_spin_strength(self, value:int):
+        self.spin_strength = value[0]
 
+    def set_pan(self, value:float):
+        self.pan = value[0]
+
+    def set_tilt(self, value:float):
+        self.tilt = value[0]
+
+    def set_feed_rate(self, value:float):
+        self.feed_rate = value[0]
+
+    def set_active(self, value:bool):
+        self.active = value
 
 
 class ArduinoState(rx.State):
@@ -96,7 +119,7 @@ def index() -> rx.Component:
         rx.card(
             rx.heading("Control"),
         rx.flex(
-            rx.switch(default_checked=False),
+            rx.switch(default_checked=False, on_change=State.set_active),
             rx.text("Active"),
             spacing="4",
         ),
