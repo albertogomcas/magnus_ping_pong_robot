@@ -3,7 +3,7 @@ from machine import Pin, ADC
 from ujrpc import JRPCService
 import time
 from arduino import arduino_uart
-from parts import Feeder, Launcher
+from parts import Feeder, Launcher, Aimer
 import asyncio
 
 class UsedPins():
@@ -37,10 +37,11 @@ UsedPins.sanity_check()
 
 
 supply = Supply()
-feeder = Feeder(axis="x")
+feeder = Feeder(axis="z")
 feeder.halt()
 launcher = Launcher(UsedPins.LAUNCHER_BOTTOM, UsedPins.LAUNCHER_LEFT, UsedPins.LAUNCHER_RIGHT)
 launcher.halt()
+aimer = Aimer(vaxis="y", haxis="x")
 
 
 
@@ -126,6 +127,8 @@ pin.off()
 
 @jrpc.fn(name="sync_settings")
 def sync_settings(r, settings):
+    print(f"Got settings {settings}")
+
     if settings["active"]:
         pin.on()
         feeder.activate()
@@ -135,6 +138,11 @@ def sync_settings(r, settings):
 
     bps = settings["feed_rate"]
     feeder.set_ball_interval(1/bps)
+
+    vangle = settings["tilt"]
+    hangle = settings["pan"]
+
+    aimer.aim(vangle, hangle)
 
     return "ok"
 

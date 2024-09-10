@@ -5,13 +5,46 @@ import asyncio
 import arduino
 from arduino import arduino_uart
 
+class Aimer:
+    def __init__(self, vaxis:str, haxis:str):
+        self.vaxis = vaxis
+        self.haxis = haxis
+        self._steps_rev = 200 * 14 # geared
+        self.vlim_min = -10
+        self.vlim_max = 10
+        self.hlim_min = -10
+        self.hlim_max = 10
+
+    def aim(self, vangle, hangle):
+
+        vangle = min(max(self.vlim_min, vangle), self.vlim_max)
+        hangle = min(max(self.hlim_min, hangle), self.hlim_max)
+        print(f"Aiming {vangle}V {hangle}H")
+
+        vsteps = int(vangle / 360 * self._steps_rev)
+        hsteps = int(hangle / 360 * self._steps_rev)
+
+        arduino_uart.write(b"\r\n\r\n")
+        time.sleep(0.1)
+        arduino_uart.flush()
+        if self.vaxis:
+            arduino_uart.write(f"<mvto {self.vaxis} {vsteps}>\r\n".encode("ascii"))
+            time.sleep(0.1)
+        if self.haxis:
+            arduino_uart.write(f"<mvto {self.haxis} {hsteps}>\r\n".encode("ascii"))
+            time.sleep(0.1)
+        pending = arduino_uart.any()
+        if pending:
+            print(arduino_uart.read(pending))
+
 class Feeder:
     """Uses a stepper to feed balls into the launcher"""
     def __init__(self, axis:str):
         self.axis = axis
         self.active = False
         self.interval = 4
-        self.step = 100
+        self._steps_rev = 200 * 14 # geared
+        self.step = self._steps_rev / 3
 
     def set_ball_interval(self, seconds):
         self.interval = max(0.5, seconds)
@@ -47,7 +80,7 @@ class Feeder:
 
     def halt(self):
         self.active = False
-        arduino_uart.write(f"<stop {self.axis}")
+        arduino_uart.write(f"<stop {self.axis}>\r\n")
 
 
 

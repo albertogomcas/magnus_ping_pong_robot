@@ -16,7 +16,6 @@ def run():
     asyncio.create_task(main())
     esp_app.run(port=80, debug=True)
 
-
 program_pin = Pin(19, Pin.IN, Pin.PULL_UP)
 
 if not program_pin.value():
