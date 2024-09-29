@@ -39,12 +39,15 @@ class Aimer:
 
 class Feeder:
     """Uses a stepper to feed balls into the launcher"""
-    def __init__(self, axis:str):
+    def __init__(self, axis:str, shaker_pin:int):
         self.axis = axis
         self.active = False
         self.interval = 4
-        self._steps_rev = 200 * 14 # geared
-        self.step = self._steps_rev / 3
+        self._steps_rev = 200 * 14 * 2 # geared
+        self.step = - self._steps_rev / 5
+        self.shaker = PWM(Pin(shaker_pin, Pin.OUT))
+        self.shaker.freq(50)
+        self.shaker.duty_ns(int(1.5e6))
 
     def set_ball_interval(self, seconds):
         self.interval = max(0.5, seconds)
@@ -65,6 +68,7 @@ class Feeder:
         while True:
             await asyncio.sleep(self.interval)
             if self.active:
+                self.shaker.duty_ns(int(1.58e6))
                 print("push ball")
                 arduino_uart.write(b"\r\n\r\n")
                 time.sleep(0.1)
@@ -81,6 +85,7 @@ class Feeder:
     def halt(self):
         self.active = False
         arduino_uart.write(f"<stop {self.axis}>\r\n")
+        self.shaker.duty_ns(int(1.5e6))
 
 
 

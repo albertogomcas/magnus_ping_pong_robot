@@ -12,6 +12,7 @@ class UsedPins():
     LAUNCHER_LEFT = 32
     LAUNCHER_BOTTOM = 33
     LAUNCHER_RIGHT = 25
+    FEEDER_SHAKER = 18
 
     @classmethod
     def sanity_check(cls):
@@ -37,7 +38,7 @@ UsedPins.sanity_check()
 
 
 supply = Supply()
-feeder = Feeder(axis="z")
+feeder = Feeder(axis="z", shaker_pin=UsedPins.FEEDER_SHAKER)
 feeder.halt()
 launcher = Launcher(UsedPins.LAUNCHER_BOTTOM, UsedPins.LAUNCHER_LEFT, UsedPins.LAUNCHER_RIGHT)
 launcher.halt()
