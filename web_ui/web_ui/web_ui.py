@@ -11,6 +11,7 @@ robot_url = "http://10.0.0.47"
 #describe the parameters of the robot
 params = {
    "active": ["bool", None, False],
+   "speed": ["int", (0, 100), 0],
    "spin_angle": ["int", (-180, 180), 0],
    "spin_strength": ["int", (0, 100), 0],
    "pan": ["float", (-20, 20), 0],
@@ -22,6 +23,7 @@ params = {
 class State(rx.State):
     """The app state."""
     active: bool = False
+    speed: int = 0
     spin_angle: int = 0
     spin_strength: int = 10
     pan: float = 0
@@ -36,6 +38,7 @@ class State(rx.State):
             "method": "sync_settings",
             "params": {"settings" : dict(
                 active=self.active,
+                speed=self.speed,
                 spin_angle=self.spin_angle,
                 spin_strength=self.spin_strength,
                 pan=self.pan,
@@ -51,6 +54,9 @@ class State(rx.State):
 
         response = requests.post(url, headers=headers, json=payload, verify=False)
         print(response)
+
+    def set_speed(self, value:int):
+        self.speed = value[0]
 
     def set_spin_angle(self, value:int):
         self.spin_angle = value[0]
@@ -123,6 +129,7 @@ def index() -> rx.Component:
             rx.text("Active"),
             spacing="4",
         ),
+        slider("speed", State, "Speed", min=0, max=100, step=1),
         slider("spin_angle", State, "Spin Angle", min=-180, max=180, step=15),
         slider("spin_strength", State, "Spin Strength", min=0, max=100, step=10),
         slider("pan", State, "Launcher pan", min=-10, max=10, step=1),

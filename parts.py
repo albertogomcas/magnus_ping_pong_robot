@@ -147,10 +147,16 @@ class Launcher:
             "left": ESC(left, "L"),
             "right": ESC(right, "R"),
         }
-        cap = 50
+
+        self.raw_minimum = 5
+        self.raw_maximum = 8
+        self.raw_spin_factor = 10
+        self.raw_spin = (self.raw_maximum - self.raw_minimum) / self.raw_spin_factor
+
 
     def set_speed(self, motor, percentage, force=False):
         assert 0 <= percentage <= 100
+
         assert motor in ["all", "bottom", "left", "right"]
 
         if motor == "all":
@@ -165,11 +171,6 @@ class Launcher:
         for motor in self._esc.values():
             motor.spin_up()
 
-    def ease(self):
-        """Decelerate towards idle speed"""
-        for motor in self._esc.values():
-            motor.idle_down()
-
     def halt(self):
         """Turn off"""
         for motor in self._esc.values():
@@ -181,15 +182,20 @@ class Launcher:
         assert -1 <= sidespin <= 1
 
         # base speed is the given setting
-        base_speed = speed
-        # a differential top/bottom speed is calculated based on the spin
+        if speed == 0:
+            base_speed = 0
+        else:
+            base_speed = (self.raw_maximum - self.raw_minimum) * speed / 100 + self.raw_minimum
 
-        bottom_speed = base_speed * (1 - topspin / 2)  # half speed when topspin is maximum
-        # a differential left/right speed is calculated based on side spin
+        # a differential top/bottom speed is calculated based on the spin
+        top_bottom_diff = self.raw_spin * topspin
         side_speed_diff = sidespin * base_speed
 
-        left_speed = base_speed * (1 - sidespin / 2)
-        right_speed = base_speed * (1 + sidespin / 2)
+        left_speed = base_speed + side_speed_diff + top_bottom_diff / 2
+        right_speed = base_speed - side_speed_diff + top_bottom_diff / 2
+        bottom_speed = base_speed - top_bottom_diff
+        # a differential left/right speed is calculated based on side spin
+
 
         print(f"Configuring for speed {speed}, top {topspin}, side {sidespin}")
         print(f"Bottom {bottom_speed:.1f}, Left {left_speed:.1f}, Right {right_speed:.1f}")

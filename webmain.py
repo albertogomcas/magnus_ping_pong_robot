@@ -5,13 +5,14 @@ import time
 from arduino import arduino_uart
 from parts import Feeder, Launcher, Aimer
 import asyncio
+import math
 
 class UsedPins():
     PROGRAM = 19  # pullup
     ESC_ALIVE = 36# adc
     LAUNCHER_LEFT = 32
     LAUNCHER_BOTTOM = 33
-    LAUNCHER_RIGHT = 25
+    LAUNCHER_RIGHT = 5
     FEEDER_SHAKER = 18
 
     @classmethod
@@ -130,13 +131,6 @@ pin.off()
 def sync_settings(r, settings):
     print(f"Got settings {settings}")
 
-    if settings["active"]:
-        pin.on()
-        feeder.activate()
-    else:
-        pin.off()
-        feeder.halt()
-
     bps = settings["feed_rate"]
     feeder.set_ball_interval(1/bps)
 
@@ -144,6 +138,24 @@ def sync_settings(r, settings):
     hangle = settings["pan"]
 
     aimer.aim(vangle, hangle)
+
+    speed = settings["speed"]
+    spin_angle = settings["spin_angle"]
+    spin_strength = settings["spin_strength"]
+
+    topspin = math.cos(math.radians(spin_angle)) * spin_strength / 100
+    sidespin = math.sin(math.radians(spin_angle)) * spin_strength / 100
+
+    launcher.configure(speed=speed, topspin=topspin, sidespin=sidespin)
+
+    if settings["active"]:
+        pin.on()
+        feeder.activate()
+        launcher.activate()
+    else:
+        pin.off()
+        feeder.halt()
+        launcher.halt()
 
     return "ok"
 
