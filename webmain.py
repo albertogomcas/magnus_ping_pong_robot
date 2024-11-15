@@ -80,7 +80,7 @@ async def main():
 
         while True:
             await asyncio.sleep(0.1)
-            active = True
+            active = False
 
             if not offline and not calibrated:
                 value = supply.esc_alive()
@@ -131,8 +131,8 @@ pin.off()
 def sync_settings(r, settings):
     print(f"Got settings {settings}")
 
-    bps = settings["feed_rate"]
-    feeder.set_ball_interval(1/bps)
+    interval = settings["feed_interval"]
+    feeder.set_ball_interval(interval)
 
     vangle = settings["tilt"]
     hangle = settings["pan"]
@@ -177,7 +177,7 @@ esp_app = Microdot()
 
 @esp_app.get("/")
 async def index(request):
-    return "robopong"
+    return "robopong is ready"
 
 @esp_app.route('/rpc', methods=["POST"])
 async def rpc(request):

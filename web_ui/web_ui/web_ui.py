@@ -16,7 +16,7 @@ params = {
    "spin_strength": ["int", (0, 100), 0],
    "pan": ["float", (-20, 20), 0],
    "tilt": ["float", (-10, 10), 0],
-   "feed_rate": ["float", (0, 1)],
+   "feed_interval": ["int", (1, 10)],
 }
 
 
@@ -28,7 +28,7 @@ class State(rx.State):
     spin_strength: int = 10
     pan: float = 0
     tilt: float = 0
-    feed_rate: float = 0
+    feed_interval: int = 5
 
     def sync_settings(self):
         url = robot_url + "/rpc"
@@ -43,7 +43,7 @@ class State(rx.State):
                 spin_strength=self.spin_strength,
                 pan=self.pan,
                 tilt=self.tilt,
-                feed_rate=float(self.feed_rate),
+                feed_interval=self.feed_interval,
             ),
             },
             "id": 1,
@@ -70,8 +70,8 @@ class State(rx.State):
     def set_tilt(self, value:float):
         self.tilt = value[0]
 
-    def set_feed_rate(self, value:float):
-        self.feed_rate = value[0]
+    def set_feed_interval(self, value:int):
+        self.feed_interval = value[0]
 
     def set_active(self, value:bool):
         self.active = value
@@ -134,7 +134,7 @@ def index() -> rx.Component:
         slider("spin_strength", State, "Spin Strength", min=0, max=100, step=10),
         slider("pan", State, "Launcher pan", min=-10, max=10, step=1),
         slider("tilt", State, "Launcher tilt", min=-10, max=10, step=1),
-        slider("feed_rate", State, "Ball feed rate", min=0, max=2, step=0.1),
+        slider("feed_interval", State, "Ball feed interval", min=1, max=10, step=1),
 
         rx.spacer(),
         rx.button("Send settings", on_click=State.sync_settings),
