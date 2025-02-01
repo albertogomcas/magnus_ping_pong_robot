@@ -2,7 +2,6 @@ from microdot import Microdot, Response
 from machine import Pin, ADC
 from ujrpc import JRPCService
 import time
-from arduino import arduino_uart
 from parts import Feeder, Launcher, Aimer
 import asyncio
 import math
@@ -13,7 +12,7 @@ class UsedPins():
     LAUNCHER_LEFT = 32
     LAUNCHER_BOTTOM = 33
     LAUNCHER_RIGHT = 5
-    FEEDER_SHAKER = 18
+    FEEDER_SERVO = 18
 
     @classmethod
     def sanity_check(cls):
@@ -39,7 +38,7 @@ UsedPins.sanity_check()
 
 
 supply = Supply()
-feeder = Feeder(axis="z", shaker_pin=UsedPins.FEEDER_SHAKER)
+feeder = Feeder(UsedPins.FEEDER_SERVO)
 feeder.halt()
 launcher = Launcher(UsedPins.LAUNCHER_BOTTOM, UsedPins.LAUNCHER_LEFT, UsedPins.LAUNCHER_RIGHT)
 launcher.halt()
@@ -160,16 +159,6 @@ def sync_settings(r, settings):
     return "ok"
 
 
-@jrpc.fn(name="arduino")
-def arduino(r, raw):
-    arduino_uart.write(b"\r\n\r\n")
-    time.sleep(0.1)
-    arduino_uart.flush()
-    arduino_uart.write((raw+"\r\n").encode("ascii"))
-    time.sleep(0.1)
-    ret = arduino_uart.readline()
-    print(f"arduino: {ret}")
-    return ret
 
 Response.default_content_type = 'text/html'
 

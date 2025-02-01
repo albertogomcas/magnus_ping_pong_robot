@@ -1,9 +1,6 @@
-import time
 from machine import Pin, PWM
 import asyncio
-
-import arduino
-from arduino import arduino_uart
+from servo import Servo
 
 class Aimer:
     def __init__(self, vaxis:str, haxis:str):
@@ -24,68 +21,43 @@ class Aimer:
         vsteps = int(vangle / 360 * self._steps_rev)
         hsteps = int(hangle / 360 * self._steps_rev)
 
-        arduino_uart.write(b"\r\n\r\n")
-        time.sleep(0.1)
-        arduino_uart.flush()
-        if self.vaxis:
-            arduino_uart.write(f"<mvto {self.vaxis} {vsteps}>\r\n".encode("ascii"))
-            time.sleep(0.1)
-        if self.haxis:
-            arduino_uart.write(f"<mvto {self.haxis} {hsteps}>\r\n".encode("ascii"))
-            time.sleep(0.1)
-        pending = arduino_uart.any()
-        if pending:
-            print(arduino_uart.read(pending))
+
 
 class Feeder:
     """Uses a stepper to feed balls into the launcher"""
-    def __init__(self, axis:str, shaker_pin:int):
-        self.axis = axis
+    def __init__(self, servo_pin: int):
+        self._pin_no = servo_pin
+        self.servo = Servo(servo_pin)
         self.active = False
         self.interval = 4
-        self._steps_rev = 200 * 14 * 2 # geared
-        self.step = - self._steps_rev / 5
-        self.shaker = PWM(Pin(shaker_pin, Pin.OUT))
-        self.shaker.freq(50)
-        self.shaker.duty_ns(int(1.5e6))
+        self.step = 60
+        self.wait = 0.25
 
     def set_ball_interval(self, seconds):
         self.interval = max(0.5, seconds)
         print(f"Ball interval: {self.interval}s")
 
     async def feed_one(self):
-        arduino_uart.write(b"\r\n\r\n")
-        time.sleep(0.1)
-        arduino_uart.flush()
-        arduino_uart.write(f"<mvby {self.axis} {self.step}>\r\n".encode("ascii"))
-        await asyncio.sleep(0.1)
-        pending = arduino_uart.any()
-        if pending:
-            print(arduino_uart.read(pending))
+        self.servo.move(0)
+        await asyncio.sleep(self.wait)
+        self.servo.move(self.step)
+        await asyncio.sleep(self.wait)
+        self.servo.move(0)
+        await asyncio.sleep(self.wait)
 
 
     async def run(self):
         while True:
             await asyncio.sleep(self.interval)
             if self.active:
-                self.shaker.duty_ns(int(1.58e6))
                 print("push ball")
-                arduino_uart.write(b"\r\n\r\n")
-                time.sleep(0.1)
-                arduino_uart.flush()
-                arduino_uart.write(f"<mvby {self.axis} {self.step}>".encode("ascii"))
-                await asyncio.sleep(0.1)
-                pending = arduino_uart.any()
-                if pending:
-                    print(arduino_uart.read(pending))
+                await self.feed_one()
 
     def activate(self):
         self.active = True
 
     def halt(self):
         self.active = False
-        arduino_uart.write(f"<stop {self.axis}>\r\n")
-        self.shaker.duty_ns(int(1.5e6))
 
 
 
@@ -108,7 +80,7 @@ class ESC:
         self.pwm.duty_ns(self.max_pulse)
 
     def calibrate_2(self):
-        """Must be called after the ESC has powered up and etered programming mode"""
+        """Must be called after the ESC has powered up and entered programming mode"""
         self.pwm.duty_ns(self.min_pulse)
 
     def set_speed(self, speed_pc, force=False):
