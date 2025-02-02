@@ -13,6 +13,8 @@ class UsedPins():
     LAUNCHER_BOTTOM = 33
     LAUNCHER_RIGHT = 5
     FEEDER_SERVO = 18
+    AIMER_SERVO_V = 17
+    AIMER_SERVO_H = 16
 
     @classmethod
     def sanity_check(cls):
@@ -42,7 +44,7 @@ feeder = Feeder(UsedPins.FEEDER_SERVO)
 feeder.halt()
 launcher = Launcher(UsedPins.LAUNCHER_BOTTOM, UsedPins.LAUNCHER_LEFT, UsedPins.LAUNCHER_RIGHT)
 launcher.halt()
-aimer = Aimer(vaxis="y", haxis="x")
+aimer = Aimer(vaxis=UsedPins.AIMER_SERVO_V, haxis=UsedPins.AIMER_SERVO_H)
 
 
 

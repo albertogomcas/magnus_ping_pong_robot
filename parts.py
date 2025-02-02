@@ -6,20 +6,23 @@ class Aimer:
     def __init__(self, vaxis:str, haxis:str):
         self.vaxis = vaxis
         self.haxis = haxis
-        self._steps_rev = 200 * 14 # geared
-        self.vlim_min = -10
-        self.vlim_max = 10
-        self.hlim_min = -10
-        self.hlim_max = 10
+        self.vservo = Servo(vaxis)
+        self.hservo = Servo(haxis)
+        self.voffset = 10
+        self.hoffset = 10
+        self.vlim_min = 0
+        self.vlim_max = 35
+        self.hlim_min = 0
+        self.hlim_max = 20
 
     def aim(self, vangle, hangle):
 
-        vangle = min(max(self.vlim_min, vangle), self.vlim_max)
-        hangle = min(max(self.hlim_min, hangle), self.hlim_max)
+        vangle = min(max(self.vlim_min, vangle + self.voffset), self.vlim_max)
+        hangle = min(max(self.hlim_min, hangle + self.hoffset), self.hlim_max)
         print(f"Aiming {vangle}V {hangle}H")
 
-        vsteps = int(vangle / 360 * self._steps_rev)
-        hsteps = int(hangle / 360 * self._steps_rev)
+        self.vservo.move(vangle)
+        self.hservo.move(hangle)
 
 
 
