@@ -19,9 +19,31 @@ params = {
    "feed_interval": ["int", (1, 10)],
 }
 
+class Preset(rx.Base):
+    """The launcher preset model."""
+    speed: int
+    spin_angle: int
+    spin_strength: int
+    pan: float
+    tilt: float
+
+class PresetsManager(rx.State):
+    presets: list[Preset] = [
+        Preset(speed=30, spin_angle=0, spin_strength=0, pan=0, tilt=10),
+        Preset(speed=60, spin_angle=90, spin_strength=50, pan=0, tilt=10),
+    ]
+
+    def add_preset(self, data:dict):
+        self.presets.append(Preset(**data))
+        self.transform_data()
+
+    def transform_data(self):
+        print(self.presets)
+
+
 
 class State(rx.State):
-    """The app state."""
+    """The current state."""
     active: bool = False
     speed: int = 0
     spin_angle: int = 0
@@ -76,31 +98,18 @@ class State(rx.State):
     def set_active(self, value:bool):
         self.active = value
 
+    def save_preset(self):
+        preset = dict(
+            speed=self.speed,
+            spin_strength=self.spin_strength,
+            spin_angle=self.spin_angle,
+            tilt=self.tilt,
+            pan=self.pan,
+        )
+        print(preset)
 
-class ArduinoState(rx.State):
-    form_data: dict = {}
+        self.get_state(PresetsManager).add_preset(preset)
 
-    def send_command(self, data):
-        print(data)
-        self.form_data = data
-
-        if not data['arduino']:
-            return
-
-        url = robot_url + "/rpc"
-
-        payload = {
-        "jsonrpc": "2.0",
-        "method": "arduino",
-        "params": ["<" + data['arduino'] + ">"],
-        "id": 1,
-        }
-        headers = {'Content-Type': 'application/json'}
-
-        print(payload)
-
-        response = requests.post(url, headers=headers, json=payload, verify=False)
-        print(response.json())
 
 def slider(name, state, text="", min=0, max=100, step=1):
     text = text or name
@@ -116,44 +125,66 @@ def slider(name, state, text="", min=0, max=100, step=1):
     ),
     )
 
+def show_preset(preset:Preset):
+    return rx.table.row(
+        rx.table.cell(f"{preset.speed}"),
+        rx.table.cell(f"{preset.spin_strength}% {preset.spin_angle}"),
+        rx.table.cell(f"T{preset.tilt} P{preset.pan}"),
+        style={"_hover":
+                    {"bg": rx.color("gray", 3)}
+              },
+    align = "center",
+    )
+
 def index() -> rx.Component:
     return rx.container(
         rx.vstack(
         rx.heading("RoboPong WebUI"),
         rx.divider(),
         rx.hstack(
-        rx.card(
-            rx.heading("Control"),
-        rx.flex(
-            rx.switch(default_checked=False, on_change=State.set_active),
-            rx.text("Active"),
+            rx.card(
+                rx.heading("Control"),
+            rx.flex(
+                rx.switch(default_checked=False, on_change=State.set_active),
+                rx.text("Active"),
+                spacing="4",
+            ),
+            slider("speed", State, "Speed", min=0, max=100, step=1),
+            slider("spin_angle", State, "Spin Angle", min=-180, max=180, step=15),
+            slider("spin_strength", State, "Spin Strength", min=0, max=100, step=10),
+            slider("pan", State, "Launcher pan", min=-10, max=10, step=1),
+            slider("tilt", State, "Launcher tilt", min=-10, max=25, step=1),
+            slider("feed_interval", State, "Ball feed interval", min=1, max=10, step=1),
+
+            rx.spacer(),
+            rx.button("Send settings", on_click=State.sync_settings),
+            spacing="4",
+            ),
+            rx.button("Save preset", on_click=State.save_preset),
             spacing="4",
         ),
-        slider("speed", State, "Speed", min=0, max=100, step=1),
-        slider("spin_angle", State, "Spin Angle", min=-180, max=180, step=15),
-        slider("spin_strength", State, "Spin Strength", min=0, max=100, step=10),
-        slider("pan", State, "Launcher pan", min=-10, max=10, step=1),
-        slider("tilt", State, "Launcher tilt", min=-10, max=10, step=1),
-        slider("feed_interval", State, "Ball feed interval", min=1, max=10, step=1),
+            rx.card(
+                rx.heading("Presets"),
+                rx.table.root(
+                    rx.table.header(
+                        rx.table.row(
+                            rx.table.column_header_cell("Speed"),
+                            rx.table.column_header_cell("Spin"),
+                            rx.table.column_header_cell("Aim"),
+                        ),
+                    ),
+                    rx.table.body(
+                        rx.foreach(
+                            PresetsManager.presets, show_preset
+                        ),
+                    ),
+                    variant="surface",
+                    size="3",
+                    width="100%",
+                ),
 
-        rx.spacer(),
-        rx.button("Send settings", on_click=State.sync_settings),
-        spacing="4",
-        ),
-         rx.card(
-             rx.form.root(
-                 rx.vstack(
-                     rx.heading("Arduino sender"),
-                     rx.input(name="arduino", placeholder="Enter command...", type="text"),
-                     rx.button("Send", type="submit"),
-                 ),
-             on_submit=ArduinoState.send_command,
-             reset_on_submit=False,
-             width="100%",
-         ),
-        ),
-        ),
-        ),
+            )
+    ),
     )
 
 
