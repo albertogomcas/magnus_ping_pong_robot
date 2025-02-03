@@ -1,3 +1,4 @@
+import json
 from microdot import Microdot, Response
 from machine import Pin, ADC
 from ujrpc import JRPCService
@@ -10,8 +11,8 @@ class UsedPins():
     PROGRAM = 19  # pullup
     ESC_ALIVE = 36# adc
     LAUNCHER_LEFT = 32
-    LAUNCHER_BOTTOM = 33
-    LAUNCHER_RIGHT = 5
+    LAUNCHER_TOP = 5
+    LAUNCHER_RIGHT = 33
     FEEDER_SERVO = 18
     AIMER_SERVO_V = 17
     AIMER_SERVO_H = 16
@@ -42,7 +43,7 @@ UsedPins.sanity_check()
 supply = Supply()
 feeder = Feeder(UsedPins.FEEDER_SERVO)
 feeder.halt()
-launcher = Launcher(UsedPins.LAUNCHER_BOTTOM, UsedPins.LAUNCHER_LEFT, UsedPins.LAUNCHER_RIGHT)
+launcher = Launcher(UsedPins.LAUNCHER_TOP, UsedPins.LAUNCHER_LEFT, UsedPins.LAUNCHER_RIGHT)
 launcher.halt()
 aimer = Aimer(vaxis=UsedPins.AIMER_SERVO_V, haxis=UsedPins.AIMER_SERVO_H)
 
@@ -127,41 +128,6 @@ pin = Pin(12, Pin.OUT)
 pin.off()
 
 
-
-@jrpc.fn(name="sync_settings")
-def sync_settings(r, settings):
-    print(f"Got settings {settings}")
-
-    interval = settings["feed_interval"]
-    feeder.set_ball_interval(interval)
-
-    vangle = settings["tilt"]
-    hangle = settings["pan"]
-
-    aimer.aim(vangle, hangle)
-
-    speed = settings["speed"]
-    spin_angle = settings["spin_angle"]
-    spin_strength = settings["spin_strength"]
-
-    topspin = math.cos(math.radians(spin_angle)) * spin_strength / 100
-    sidespin = math.sin(math.radians(spin_angle)) * spin_strength / 100
-
-    launcher.configure(speed=speed, topspin=topspin, sidespin=sidespin)
-
-    if settings["active"]:
-        pin.on()
-        feeder.activate()
-        launcher.activate()
-    else:
-        pin.off()
-        feeder.halt()
-        launcher.halt()
-
-    return "ok"
-
-
-
 Response.default_content_type = 'text/html'
 
 esp_app = Microdot()
@@ -173,3 +139,59 @@ async def index(request):
 @esp_app.route('/rpc', methods=["POST"])
 async def rpc(request):
     return jrpc.handle_rpc(request.json)
+
+@jrpc.fn(name="status")
+def status(r):
+    status = {
+        "launcher": launcher.status(),
+        "feeder": feeder.status(),
+        "aim": aimer.status(),
+    }
+    return status
+
+@jrpc.fn(name="feed_one")
+def feed_one(r):
+    if launcher.active:
+        print("Feeding one")
+        feeder.feed_one()
+    else:
+        print("Launcher not active, not feeding")
+    return status(r)
+
+@jrpc.fn(name="sync_settings")
+def sync_settings(r, settings):
+    print(f"Got settings {settings}")
+
+    interval = settings.get("feed_interval", None)
+    if interval is not None:
+        feeder.set_ball_interval(interval)
+
+    vangle = settings.get("tilt", None)
+    hangle = settings.get("pan", None)
+    aimer.aim(vangle, hangle)
+
+    speed = settings["speed"]
+    spin_angle = settings["spin_angle"]
+    spin_strength = settings["spin_strength"]
+
+    topspin = math.cos(math.radians(spin_angle)) * spin_strength / 100
+    sidespin = math.sin(math.radians(spin_angle)) * spin_strength / 100
+
+    launcher.configure(speed=speed, topspin=topspin, sidespin=sidespin)
+
+    if settings["launcher_active"]:
+        pin.on()
+        launcher.activate()
+    else:
+        pin.off()
+        feeder.halt()
+        launcher.halt()
+
+    if settings["feeder_active"]:
+        if launcher.active and launcher.speed > 0:
+            feeder.activate()
+        else:
+            print("Launcher is not running, feeder activation prevented")
+            feeder.halt()
+
+    return status(r)

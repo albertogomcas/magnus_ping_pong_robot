@@ -11,19 +11,32 @@ class Aimer:
         self.voffset = 10
         self.hoffset = 10
         self.vlim_min = 0
-        self.vlim_max = 35
+        self.vlim_max = 45
         self.hlim_min = 0
         self.hlim_max = 20
+        self.vaim = 0
+        self.haim = 0
+        self.aim(0,0)
 
     def aim(self, vangle, hangle):
+        if vangle is not None:
+            vangle = min(max(self.vlim_min, vangle + self.voffset), self.vlim_max)
+            self.vaim = vangle
 
-        vangle = min(max(self.vlim_min, vangle + self.voffset), self.vlim_max)
-        hangle = min(max(self.hlim_min, hangle + self.hoffset), self.hlim_max)
-        print(f"Aiming {vangle}V {hangle}H")
+        if hangle is not None:
+            hangle = min(max(self.hlim_min, hangle + self.hoffset), self.hlim_max)
+            self.haim = hangle
 
-        self.vservo.move(vangle)
-        self.hservo.move(hangle)
+        print(f"Aiming {self.vaim}V {self.haim}H")
 
+        self.vservo.move(self.vaim)
+        self.hservo.move(self.haim)
+
+    def status(self):
+        return dict(
+            tilt=self.vaim-self.voffset,
+            pan=self.haim-self.hoffset,
+        )
 
 
 class Feeder:
@@ -62,7 +75,8 @@ class Feeder:
     def halt(self):
         self.active = False
 
-
+    def status(self):
+        return dict(active=self.active, interval=self.interval)
 
 class ESC:
     def __init__(self, pin, name, freq=50):
@@ -116,23 +130,31 @@ class ESC:
 class Launcher:
     """Shoots balls using 3 brushless motors"""
 
-    def __init__(self, bottom, left, right):
+    def __init__(self, top, left, right):
         self._esc = {
-            "bottom": ESC(bottom, name="B"),
+            "top": ESC(top, name="T"),
             "left": ESC(left, "L"),
             "right": ESC(right, "R"),
         }
 
+        self._cos30 = 0.866
+        self._sin30 = 0.5
+
         self.raw_minimum = 5
         self.raw_maximum = 8
-        self.raw_spin_factor = 10
-        self.raw_spin = (self.raw_maximum - self.raw_minimum) / self.raw_spin_factor
-
+        self.raw_spin = 5
+        self.active = False
+        self.speed = 0
+        self.topspin = 0
+        self.sidespin = 0
+        self.left_speed = 0
+        self.right_speed = 0
+        self.top_speed = 0
 
     def set_speed(self, motor, percentage, force=False):
         assert 0 <= percentage <= 100
 
-        assert motor in ["all", "bottom", "left", "right"]
+        assert motor in ["all", "top", "left", "right"]
 
         if motor == "all":
             for motor_name, motor_esc in self._esc.items():
@@ -145,11 +167,13 @@ class Launcher:
         """Accelerate towards launching speed"""
         for motor in self._esc.values():
             motor.spin_up()
+        self.active = True
 
     def halt(self):
         """Turn off"""
         for motor in self._esc.values():
             motor.set_speed(0, force=True)
+        self.active = False
 
     def configure(self, speed, topspin, sidespin):
         assert 0 <= speed <= 100
@@ -162,27 +186,36 @@ class Launcher:
         else:
             base_speed = (self.raw_maximum - self.raw_minimum) * speed / 100 + self.raw_minimum
 
-        # a differential top/bottom speed is calculated based on the spin
-        top_bottom_diff = self.raw_spin * topspin
-        side_speed_diff = sidespin * base_speed
+        top = topspin * self.raw_spin
+        side = sidespin * self.raw_spin
 
-        left_speed = base_speed + side_speed_diff + top_bottom_diff / 2
-        right_speed = base_speed - side_speed_diff + top_bottom_diff / 2
-        bottom_speed = base_speed - top_bottom_diff
-        # a differential left/right speed is calculated based on side spin
+        left_speed = (3 * base_speed - top - 3/2 * side / self._cos30) / 3
+        right_speed = left_speed + side / self._cos30
+        top_speed = top + self._sin30 * (left_speed + right_speed)
 
+        print(f"Requested speed {base_speed}, (T+L+R)/3 = {(top_speed + right_speed + left_speed) / 3}")
 
         print(f"Configuring for speed {speed}, top {topspin}, side {sidespin}")
-        print(f"Bottom {bottom_speed:.1f}, Left {left_speed:.1f}, Right {right_speed:.1f}")
+        print(f"Top {top_speed:.1f}, Left {left_speed:.1f}, Right {right_speed:.1f}")
 
-        self._esc["bottom"].set_speed(bottom_speed)
+        self.speed = speed
+        self.topspin = topspin
+        self.sidespin = sidespin
+        self.top_speed = top_speed
+        self.right_speed = right_speed
+        self.left_speed = left_speed
+
+        self._esc["top"].set_speed(top_speed)
         self._esc["left"].set_speed(left_speed)
         self._esc["right"].set_speed(right_speed)
 
     def status(self):
-        status = ""
-        order = ["left", "bottom", "right"]
-        for mname in order:
-            status += f"{self._esc[mname].status()} "
-
-        return status
+        return dict(
+            active=self.active,
+            speed=self.speed,
+            top_speed=self.top_speed,
+            right_speed=self.right_speed,
+            left_speed=self.left_speed,
+            topspin=self.topspin,
+            sidespin=self.sidespin,
+        )
