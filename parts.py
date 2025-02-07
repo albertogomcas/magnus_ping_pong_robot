@@ -141,8 +141,8 @@ class Launcher:
         self._sin30 = 0.5
 
         self.raw_minimum = 5
-        self.raw_maximum = 8
-        self.raw_spin = 5
+        self.raw_maximum = 9
+        self.raw_spin = 3 * 2 * self._cos30 * self.raw_minimum / 5 # should ensure does not go negative ever
         self.active = False
         self.speed = 0
         self.topspin = 0
@@ -192,6 +192,17 @@ class Launcher:
         left_speed = (3 * base_speed - top - 3/2 * side / self._cos30) / 3
         right_speed = left_speed + side / self._cos30
         top_speed = top + self._sin30 * (left_speed + right_speed)
+
+        if left_speed < self.raw_minimum:
+            print("Warning: settings make left speed stall")
+        if right_speed < self.raw_minimum:
+            print("Warning: settings make right speed stall")
+        if top_speed < self.raw_minimum:
+            print("Warning: settings make top speed stall")
+
+        left_speed = max(left_speed, 0)
+        right_speed = max(right_speed, 0)
+        top_speed = max(top_speed, 0)
 
         print(f"Requested speed {base_speed}, (T+L+R)/3 = {(top_speed + right_speed + left_speed) / 3}")
 
