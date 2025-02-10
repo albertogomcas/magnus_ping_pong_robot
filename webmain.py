@@ -190,8 +190,8 @@ def sync_settings(r, settings):
     if settings["feeder_active"]:
         if launcher.active and launcher.speed > 0:
             feeder.activate()
-        else:
-            print("Launcher is not running, feeder activation prevented")
-            feeder.halt()
+    else:
+        print("Launcher is not running, feeder activation prevented")
+        feeder.halt()
 
     return status(r)

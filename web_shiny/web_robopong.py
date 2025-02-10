@@ -146,17 +146,16 @@ def server(input, output, session):
     # Handle the "Feed One" button press
     @reactive.Effect
     def feed_one():
-        if input.feed_one():
-            url = robot_url + "/rpc"
-            payload = {
-                "jsonrpc": "2.0",
-                "method": "feed_one",
-                "id": 3,
-            }
-            headers = {'Content-Type': 'application/json'}
-            response = requests.post(url, headers=headers, json=payload, verify=False)
+        url = robot_url + "/rpc"
+        payload = {
+            "jsonrpc": "2.0",
+            "method": "feed_one",
+            "id": 3,
+        }
+        headers = {'Content-Type': 'application/json'}
+        response = requests.post(url, headers=headers, json=payload, verify=False)
 
-            return ui.notification_show(f"Feeding one ball...{response.json()}", type="info")
+        return ui.notification_show(f"Feeding one ball...{response.json()}", type="info")
 
     # Handle the "Save Preset" button press
     @reactive.Effect
@@ -223,7 +222,7 @@ app = App(app_ui, server)
 
 if __name__ == "__main__":
     from shiny import run_app
-    run_app('web_robopong:app', reload=True)
+    run_app('web_robopong:app', reload=True, host="10.0.0.168", port=80)
 
 
 
