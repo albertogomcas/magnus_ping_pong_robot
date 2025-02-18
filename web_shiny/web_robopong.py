@@ -85,8 +85,8 @@ app_ui = ui.page_fluid(
                      ui.input_slider("spin_angle", "Spin Angle", min=-180, max=180, value=0, step=10),
                      ui.input_slider("spin_strength", "Spin Strength", min=0, max=100, value=0, step=10),
                      ui.input_slider("pan", "Launcher Pan", min=-10, max=10, value=0, step=1),
-                     ui.input_slider("tilt", "Launcher Tilt", min=-10, max=35, value=10, step=1),
-                     ui.input_slider("feed_interval", "Ball Feed Interval (s)", min=1, max=10, value=5),
+                     ui.input_slider("tilt", "Launcher Tilt", min=0, max=50, value=10, step=1),
+                     ui.input_slider("feed_interval", "Ball Feed Interval (s)", min=1, max=10, value=5, step=0.5),
                      ui.input_action_button("save_preset", "Save Preset"),
                      ),
         ui.nav_panel("Presets",  # Third tab

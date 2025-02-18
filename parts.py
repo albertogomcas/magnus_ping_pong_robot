@@ -8,8 +8,10 @@ class Aimer:
         self.haxis = haxis
         self.vservo = Servo(vaxis)
         self.hservo = Servo(haxis)
-        self.voffset = 10
-        self.hoffset = 10
+        self.voffset = 0
+        self.vgain = 25/35
+        self.hoffset = 0
+        self.hgain = 1
         self.vlim_min = 0
         self.vlim_max = 45
         self.hlim_min = 0
@@ -20,22 +22,22 @@ class Aimer:
 
     def aim(self, vangle, hangle):
         if vangle is not None:
-            vangle = min(max(self.vlim_min, vangle + self.voffset), self.vlim_max)
+            vangle = min(max(self.vlim_min, self.vgain * vangle + self.voffset), self.vlim_max)
             self.vaim = vangle
 
         if hangle is not None:
-            hangle = min(max(self.hlim_min, hangle + self.hoffset), self.hlim_max)
+            hangle = min(max(self.hlim_min, self.hgain * hangle + self.hoffset), self.hlim_max)
             self.haim = hangle
 
-        print(f"Aiming {self.vaim}V {self.haim}H")
+        print(f"Aiming {vangle} ({self.vaim}V) {hangle} ({self.haim}H)")
 
         self.vservo.move(self.vaim)
         self.hservo.move(self.haim)
 
     def status(self):
         return dict(
-            tilt=self.vaim-self.voffset,
-            pan=self.haim-self.hoffset,
+            tilt=self.vaim / self.vgain - self.voffset,
+            pan=self.haim / self.hgain - self.hoffset,
         )
 
 
@@ -87,8 +89,6 @@ class ESC:
         self.max_pulse = 2000000  # ns
         self.speed = 0
         self._current_pulse = 0
-        self._idle_factor = 0.5
-        self._idling = False
         self.limit = 100
         self.set_speed(0)
 
@@ -115,17 +115,11 @@ class ESC:
             self.pwm.duty_ns(pulse)
             self.spin_up()
 
-    def idle_down(self):
-        self.pwm.duty_ns(int(self._current_pulse * self._idle_factor))
-        self._idling = True
-
     def spin_up(self):
         self.pwm.duty_ns(self._current_pulse)
-        self._idling = False
 
     def status(self):
-        idling = " " if not self._idling else "I"
-        return f"{self.name}{self.speed:2.0f}{idling}"
+        return f"{self.name}{self.speed:2.0f}"
 
 class Launcher:
     """Shoots balls using 3 brushless motors"""
