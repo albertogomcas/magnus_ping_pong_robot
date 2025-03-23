@@ -3,6 +3,7 @@ from shiny import App, ui, reactive, render
 import requests
 import json
 import os
+import matplotlib.pyplot as plt
 
 
 # Robot URL
@@ -84,8 +85,8 @@ app_ui = ui.page_fluid(
                      ui.input_slider("speed", "Speed", min=0, max=100, value=0),
                      ui.input_slider("spin_angle", "Spin Angle", min=-180, max=180, value=0, step=10),
                      ui.input_slider("spin_strength", "Spin Strength", min=0, max=100, value=0, step=10),
-                     ui.input_slider("pan", "Launcher Pan", min=-10, max=10, value=0, step=1),
-                     ui.input_slider("tilt", "Launcher Tilt", min=0, max=50, value=10, step=1),
+                     ui.input_slider("pan", "Launcher Pan", min=-20, max=20, value=0, step=1),
+                     ui.input_slider("tilt", "Launcher Tilt", min=-20, max=35, value=0, step=1),
                      ui.input_slider("feed_interval", "Ball Feed Interval (s)", min=1, max=10, value=5, step=0.5),
                      ui.input_action_button("save_preset", "Save Preset"),
                      ),
@@ -93,6 +94,11 @@ app_ui = ui.page_fluid(
                      ui.output_ui("preset_dropdown_ui"),
                      ui.output_ui("preset_ui"),
                      ),
+        ui.nav_panel(
+            "Target",
+            ui.output_plot("table", width="400px", height="400px"),
+            ui.output_text("click_info"),
+        ),
         title=ui.output_text("status_navbar_ui"),
     )
 )
@@ -110,7 +116,8 @@ def server(input, output, session):
     @render.ui
     def status_ui():
         reactive.invalidate_later(1) # refresh every 1 second
-        status = robot_status()
+        #status = robot_status()
+        status = {"online": False}
         print(status)
         if status["online"]:
             session.robot_status_text.set("Status (🟢 Online)")
@@ -216,6 +223,24 @@ def server(input, output, session):
     @render.ui
     def preset_dropdown_ui():
         return ui.input_select("preset_dropdown", "Select Preset", choices=session.preset_list())
+
+    @output
+    @render.plot
+    def plot():
+        fig, ax = plt.subplots()
+        ax.set_xlim(0, 10)
+        ax.set_ylim(0, 10)
+        ax.set_title("Click anywhere")
+        ax.grid(True)
+        return fig
+
+    @output
+    @render.text
+    def click_info():
+        if input.plot_click():
+            click_data = input.plot_click()
+            return f"Clicked at: x={click_data['x']:.2f}, y={click_data['y']:.2f}"
+        return "Click on the plot to see coordinates."
 
 # Create the Shiny app
 app = App(app_ui, server)

@@ -8,14 +8,19 @@ class Aimer:
         self.haxis = haxis
         self.vservo = Servo(vaxis)
         self.hservo = Servo(haxis)
-        self.voffset = 0
-        self.vgain = 25/35
-        self.hoffset = 0
-        self.hgain = 1
-        self.vlim_min = 0
-        self.vlim_max = 45
-        self.hlim_min = 0
-        self.hlim_max = 20
+
+        self.vgain = 1 #25/35
+
+        self.hgain = -1
+
+        self.vlim_min = -20
+        self.voffset = 45
+        self.vlim_max = 35 + self.voffset
+
+        self.hlim_min = -45
+        self.hoffset = 90
+        self.hlim_max = 45 + self.hoffset
+
         self.vaim = 0
         self.haim = 0
         self.aim(0,0)
