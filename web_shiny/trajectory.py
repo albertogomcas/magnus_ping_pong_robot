@@ -33,7 +33,7 @@ ROBOT_HEAD_Y = 0
 ROBOT_HEAD_Z = 0.3
 
 v_max = 15  # Max initial speed (m/s)
-max_rpm = 15000
+max_rpm = 5000
 omega_max = 0.10472 * max_rpm  # Max spin (rad/s)
 
 reg_factor = 0.01
@@ -178,7 +178,7 @@ def solve_trajectory(initial_pos, initial_speed, omega, target=None):
 
     x_landing, y_landing = find_landing(t_vals, x_vals, y_vals, z_vals)
 
-    plot_trajectory(x_vals, y_vals, z_vals, target=target, landing=(x_landing, y_landing))
+    #plot_trajectory(x_vals, y_vals, z_vals, target=target, landing=(x_landing, y_landing))
 
 
 
@@ -230,7 +230,7 @@ def find_landing(t_vals, x_vals, y_vals, z_vals):
 
 
 
-def simplified_error_function(params):
+def simplified_error_function(params, target_x, target_y, net_clearance):
     """Solve the problem with flatspin"""
     vx0, vy0, vz0, = params
     t_vals, x_vals, y_vals, z_vals = simulate_trajectory(vx0, vy0, vz0, 0, 0, 0)
@@ -246,7 +246,7 @@ def simplified_error_function(params):
     return trajectory_error + net_penalty
 
 
-def error_function(params):
+def error_function(params, target_x, target_y, net_clearance, target_topspin, target_sidespin):
     vx0, vy0, vz0, omega_x, omega_y, omega_z = params
     t_vals, x_vals, y_vals, z_vals = simulate_trajectory(vx0, vy0, vz0, omega_x, omega_y, omega_z)
     x_landing, y_landing = find_landing(t_vals, x_vals, y_vals, z_vals)
@@ -268,7 +268,7 @@ def error_function(params):
     # Compute squared error
     trajectory_error = (x_landing - target_x) ** 2 + (y_landing - target_y) ** 2
 
-    print(f"{trajectory_error=} {speed_penalty=} {spin_penalty=} {net_penalty=}")
+    #print(f"{trajectory_error=} {speed_penalty=} {spin_penalty=} {net_penalty=}")
 
     return trajectory_error + speed_penalty + spin_penalty + net_penalty
 
@@ -288,27 +288,31 @@ target_topspin = -200
 target_sidespin = 0
 
 
-initial_nospin = tuple(minimize(simplified_error_function, (20, 0, 5), method="SLSQP").x)
+def calculate(target_x, target_y, net_clearance, topspin, sidespin):
 
-print(f"Initial nospin {initial_nospin} m/s")
+    initial_nospin = tuple(minimize(simplified_error_function, (20, 0, 5), method="SLSQP", args=(target_x, target_y, net_clearance)).x)
 
-solve_trajectory(initial_pos=(ROBOT_HEAD_X, ROBOT_HEAD_Y, ROBOT_HEAD_Z),
-                 initial_speed=initial_nospin,
-                 omega=(0,0,0),
-                 target=(target_x, target_y)
-                 )
+    print(f"Initial nospin {initial_nospin} m/s")
 
-initial_guess = initial_nospin + (0, 0, 0)
+    #solve_trajectory(initial_pos=(ROBOT_HEAD_X, ROBOT_HEAD_Y, ROBOT_HEAD_Z),
+    #                 initial_speed=initial_nospin,
+    #                 omega=(0,0,0),
+    #                 target=(target_x, target_y)
+    #                 )
 
-result = minimize(error_function, initial_guess, method='SLSQP', bounds=bounds)
+    initial_guess = initial_nospin + (0, 0, 0)
 
-# Extract optimized values
-optimized_vx0, optimized_vy0, optimized_vz0, optimized_omega_x, optimized_omega_y, optimized_omega_z = result.x
-print(f"Optimized Initial Velocity: vx={optimized_vx0:.2f}, vy={optimized_vy0:.2f}, vz={optimized_vz0:.2f}")
-print(f"Optimized Spin: omega_x={optimized_omega_x:.2f}, omega_y={optimized_omega_y:.2f}, omega_z={optimized_omega_z:.2f}")
+    result = minimize(error_function, initial_guess, method='SLSQP', bounds=bounds, args=(target_x, target_y, net_clearance, omega_max*topspin/100, omega_max*sidespin/100))
 
-solve_trajectory(initial_pos=(ROBOT_HEAD_X, ROBOT_HEAD_Y, ROBOT_HEAD_Z),
-                 initial_speed=(optimized_vx0, optimized_vy0, optimized_vz0),
-                 omega=(optimized_omega_x, optimized_omega_y, optimized_omega_z),
-                 target=(target_x, target_y, target_z),
-                 )
+    # Extract optimized values
+    optimized_vx0, optimized_vy0, optimized_vz0, optimized_omega_x, optimized_omega_y, optimized_omega_z = result.x
+    print(f"Optimized Initial Velocity: vx={optimized_vx0:.2f}, vy={optimized_vy0:.2f}, vz={optimized_vz0:.2f}")
+    print(f"Optimized Spin: omega_x={optimized_omega_x:.2f}, omega_y={optimized_omega_y:.2f}, omega_z={optimized_omega_z:.2f}")
+
+    return simulate_trajectory(optimized_vx0, optimized_vy0, optimized_vz0, optimized_omega_x, optimized_omega_y, optimized_omega_z)
+
+    #solve_trajectory(initial_pos=(ROBOT_HEAD_X, ROBOT_HEAD_Y, ROBOT_HEAD_Z),
+    #                 initial_speed=(optimized_vx0, optimized_vy0, optimized_vz0),
+    #                 omega=(optimized_omega_x, optimized_omega_y, optimized_omega_z),
+    #                 target=(target_x, target_y, target_z),
+    #                 )

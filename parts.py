@@ -108,16 +108,19 @@ class Shaker:
     def __init__(self, servo_pin: int):
         self._pin_no = servo_pin
         self.servo = Servo(servo_pin)
+        self.stop_ns = 1570000
+        self.servo.__motor.duty_ns(self.stop_ns)
+        self.move_us = 0
         self.active = False
 
 
     async def run(self):
         while True:
-            await asyncio.sleep(self.interval)
+            await asyncio.sleep(1)
             if self.active:
-                self.servo.__motor.duty_ns(1575000)
+                self.servo.__motor.duty_ns(int(self.stop_ns + self.move_us * 1e3))
             else:
-                self.servo.__motor.duty_ns(1570000)
+                self.servo.__motor.duty_ns(self.stop_ns)
 
 
 

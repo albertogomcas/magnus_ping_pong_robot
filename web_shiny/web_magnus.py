@@ -27,7 +27,7 @@ def load_presets_from_file():
     return {}
 
 # Function to sync settings with the robot
-def sync_settings(feeder_active, launcher_active, speed, spin_angle, spin_strength, pan, tilt, feed_interval):
+def sync_settings(feeder_active, launcher_active, speed, spin_angle, spin_strength, pan, tilt, feed_interval, shaker):
     url = robot_url + "/rpc"
     payload = {
         "jsonrpc": "2.0",
@@ -42,6 +42,7 @@ def sync_settings(feeder_active, launcher_active, speed, spin_angle, spin_streng
                 "pan": pan,
                 "tilt": tilt,
                 "feed_interval": feed_interval,
+                "shaker": shaker,
             }
         },
         "id": 1,
@@ -65,6 +66,7 @@ def robot_status():
         status = response.json()
         status["online"] = True
         return status
+
     except requests.exceptions.Timeout:
         return dict(online=False)
 
@@ -72,23 +74,30 @@ def robot_status():
 
 # Shiny UI layout
 app_ui = ui.page_fluid(
-    ui.h2("RoboPong WebUI"),
+    ui.h2("Magnus WebUI"),
 
     ui.page_navbar(
-        ui.nav_panel("Status",  # First tab
-                     ui.output_ui("status_ui"),
-                     ),
         ui.nav_panel("Control",  # Second tab
+                    ui.output_ui("status_ui"),
                      ui.input_switch("launcher_active", "Launcher Active", False),
-                     ui.input_action_button("feed_one", "Feed One Ball"),
-                     ui.input_switch("feeder_active", "Continuous Feed", False),
                      ui.input_slider("speed", "Speed", min=0, max=100, value=0),
-                     ui.input_slider("spin_angle", "Spin Angle", min=-180, max=180, value=0, step=10),
-                     ui.input_slider("spin_strength", "Spin Strength", min=0, max=100, value=0, step=10),
+                     ui.div(
+                        ui.input_slider("spin_angle", "Spin Angle", min=-180, max=180, value=0, step=10),
+                            ui.input_slider("spin_strength", "Spin Strength", min=0, max=100, value=0, step=10),
+                         style="display: flex; gap: 20px;",
+                     ),
+                     ui.div(
                      ui.input_slider("pan", "Launcher Pan", min=-20, max=20, value=0, step=1),
                      ui.input_slider("tilt", "Launcher Tilt", min=-20, max=35, value=0, step=1),
-                     ui.input_slider("feed_interval", "Ball Feed Interval (s)", min=1, max=10, value=5, step=0.5),
+                    style="display: flex; gap: 20px;",
+                     ),
                      ui.input_action_button("save_preset", "Save Preset"),
+                     ui.hr(),
+                     ui.input_action_button("feed_one", "Feed One Ball"),
+                     ui.input_switch("feeder_active", "Continuous Feed", False),
+                     ui.input_slider("feed_interval", "Ball Feed Interval (s)", min=1, max=10, value=5, step=0.5),
+                     ui.input_slider("shaker_tuning", "Shaker tuning", min=-100, max=100, value=0, step=1),
+
                      ),
         ui.nav_panel("Presets",  # Third tab
                      ui.output_ui("preset_dropdown_ui"),
@@ -106,7 +115,7 @@ app_ui = ui.page_fluid(
 
 # Shiny server logic
 def server(input, output, session):
-    session.robot_status_text = reactive.value("Status (🔴 Offline)")
+    session.robot_status_text = reactive.value("🔴 Offline")
     session.preset_list = reactive.value([])
     session.selected_preset = reactive.value("")
     session.preset_summary = reactive.value("No preset loaded")
@@ -116,17 +125,21 @@ def server(input, output, session):
     @render.ui
     def status_ui():
         reactive.invalidate_later(1) # refresh every 1 second
-        #status = robot_status()
-        status = {"online": False}
+        status = robot_status()
+        #status = {"online": False}
         print(status)
         if status["online"]:
-            session.robot_status_text.set("Status (🟢 Online)")
+            supply_on = status["result"]["supply"]["esc_alive"]
+            if supply_on:
+                session.robot_status_text.set("🟢⚡")
+            else:
+                session.robot_status_text.set("🟢💤")
             return ui.div(
                 ui.p(f"{datetime.now().strftime('%H:%M:%S')} Robot is online!"),
-
             )
         else:
-            session.robot_status_text.set("Status (🔴 Offline)")
+            print("Offline")
+            session.robot_status_text.set("🔴 Offline")
             return ui.p(f"{datetime.now().strftime('%H:%M:%S')} RoboPong is offline")
 
     @output
@@ -145,13 +158,15 @@ def server(input, output, session):
             spin_strength=input.spin_strength(),
             pan=input.pan(),
             tilt=input.tilt(),
-            feed_interval=input.feed_interval()
+            feed_interval=input.feed_interval(),
+            shaker=input.shaker_tuning(),
         )
         print(response)  # Output response for debugging
-        return ui.notification_show("Settings sent to RoboPong!", type="success")
+        return ui.notification_show("Settings sent to RoboPong!", type="success", duration=0.25)
 
     # Handle the "Feed One" button press
-    @reactive.Effect
+    @reactive.effect
+    @reactive.event(input.feed_one)
     def feed_one():
         url = robot_url + "/rpc"
         payload = {
@@ -162,7 +177,7 @@ def server(input, output, session):
         headers = {'Content-Type': 'application/json'}
         response = requests.post(url, headers=headers, json=payload, verify=False)
 
-        return ui.notification_show(f"Feeding one ball...{response.json()}", type="info")
+        return ui.notification_show(f"Feeding one ball...", type="info", duration=0.25)
 
     # Handle the "Save Preset" button press
     @reactive.Effect
@@ -190,7 +205,7 @@ def server(input, output, session):
         save_preset_to_file(input.preset_name(), preset)
         session.preset_list.set(list(load_presets_from_file().keys()))
         print(f"Preset saved: {preset}")
-        ui.notification_show("Preset saved!", type="success")
+        ui.notification_show("Preset saved!", type="success", duration=0.25)
         session.preset_summary.set(f"Saved Preset: {input.preset_name()}")
 
 
@@ -247,7 +262,7 @@ app = App(app_ui, server)
 
 if __name__ == "__main__":
     from shiny import run_app
-    run_app('web_robopong:app', reload=True, host="10.0.0.168", port=80)
+    run_app('web_magnus:app', reload=True, host="10.0.0.168", port=80)
 
 
 

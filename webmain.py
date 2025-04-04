@@ -36,6 +36,11 @@ class Supply():
     def esc_alive(self):
         return self.esc_alive_pin.read() > 3500
 
+    def status(self):
+        return dict(
+            esc_alive=self.esc_alive(),
+        )
+
 
 
 UsedPins.sanity_check()
@@ -148,6 +153,7 @@ async def rpc(request):
 @jrpc.fn(name="status")
 def status(r):
     status = {
+        "supply": supply.status(),
         "launcher": launcher.status(),
         "feeder": feeder.status(),
         "aim": aimer.status(),
@@ -183,6 +189,10 @@ def sync_settings(r, settings):
     sidespin = math.sin(math.radians(spin_angle)) * spin_strength / 100
 
     launcher.configure(speed=speed, topspin=topspin, sidespin=sidespin)
+
+    shaker_tuning = settings["shaker"]
+    shaker.move_us = shaker_tuning
+
 
     if settings["launcher_active"]:
         pin.on()
