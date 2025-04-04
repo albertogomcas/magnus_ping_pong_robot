@@ -23,11 +23,11 @@ class Servo:
         self.__initialise(pin)
 
 
-    def move(self, angle):
+    def move(self, angle, force=False):
         # round to 2 decimal places, so we have a chance of reducing unwanted servo adjustments
         angle = round(angle, 2)
         # do we need to move?
-        if angle == self.current_angle:
+        if angle == self.current_angle and not force:
             return
         self.current_angle = angle
         # calculate the new duty cycle and move the motor
@@ -43,3 +43,4 @@ class Servo:
         self.__angle_conversion_factor = (self.__max_u10_duty - self.__min_u10_duty) / (self.max_angle - self.min_angle)
         self.__motor = PWM(Pin(pin))
         self.__motor.freq(self.__servo_pwm_freq)
+        self.move(0, force=True)

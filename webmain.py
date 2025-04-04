@@ -3,17 +3,18 @@ from microdot import Microdot, Response
 from machine import Pin, ADC
 from ujrpc import JRPCService
 import time
-from parts import Feeder, Launcher, Aimer
+from parts import Feeder, Launcher, Aimer, Shaker
 import asyncio
 import math
 
 class UsedPins():
     PROGRAM = 19  # pullup
-    ESC_ALIVE = 36# adc
+    ESC_ALIVE = 36# adc sv
     LAUNCHER_LEFT = 32
-    LAUNCHER_TOP = 5
+    LAUNCHER_TOP = 25
     LAUNCHER_RIGHT = 33
     FEEDER_SERVO = 18
+    SHAKER_SERVO = 5
     AIMER_SERVO_V = 17
     AIMER_SERVO_H = 16
 
@@ -41,8 +42,10 @@ UsedPins.sanity_check()
 
 
 supply = Supply()
-feeder = Feeder(UsedPins.FEEDER_SERVO)
+shaker = Shaker(UsedPins.SHAKER_SERVO)
+feeder = Feeder(UsedPins.FEEDER_SERVO, shaker=shaker)
 feeder.halt()
+
 launcher = Launcher(UsedPins.LAUNCHER_TOP, UsedPins.LAUNCHER_LEFT, UsedPins.LAUNCHER_RIGHT)
 launcher.halt()
 aimer = Aimer(vaxis=UsedPins.AIMER_SERVO_V, haxis=UsedPins.AIMER_SERVO_H)
@@ -71,6 +74,7 @@ async def main():
     feeder.halt()
 
     feed_task = asyncio.create_task(feeder.run())
+    shaker_task = asyncio.create_task(shaker.run())
 
     offline = False
     calibrated = False
@@ -117,6 +121,7 @@ async def main():
         launcher.halt()
         feeder.halt()
         feed_task.cancel()
+        shaker_task.cancel()
         raise
 
 

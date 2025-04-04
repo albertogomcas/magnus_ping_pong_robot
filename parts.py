@@ -1,6 +1,7 @@
 from machine import Pin, PWM
 import asyncio
 from servo import Servo
+import time
 
 class Aimer:
     def __init__(self, vaxis:str, haxis:str):
@@ -9,8 +10,7 @@ class Aimer:
         self.vservo = Servo(vaxis)
         self.hservo = Servo(haxis)
 
-        self.vgain = 1 #25/35
-
+        self.vgain = 3
         self.hgain = -1
 
         self.vlim_min = -20
@@ -36,6 +36,18 @@ class Aimer:
 
         print(f"Aiming {vangle} ({self.vaim}V) {hangle} ({self.haim}H)")
 
+        vstart = self.vservo.current_angle
+        hstart = self.hservo.current_angle
+        steps = 1
+        vmove = vangle - vstart
+        hmove = hangle - hstart
+        for i in range(0, steps):
+            vinter = vstart + i/steps * vmove
+            hinter = hstart + i/steps * hmove
+            self.vservo.move(vinter)
+            self.hservo.move(hinter)
+            time.sleep_ms(20)
+
         self.vservo.move(self.vaim)
         self.hservo.move(self.haim)
 
@@ -48,12 +60,13 @@ class Aimer:
 
 class Feeder:
     """Uses a stepper to feed balls into the launcher"""
-    def __init__(self, servo_pin: int):
+    def __init__(self, servo_pin: int, shaker: None):
         self._pin_no = servo_pin
         self.servo = Servo(servo_pin)
+        self.shaker = shaker
         self.active = False
         self.interval = 4
-        self.step = 60
+        self.step = 70
         self.wait = 0.25
 
     def set_ball_interval(self, seconds):
@@ -78,12 +91,35 @@ class Feeder:
 
     def activate(self):
         self.active = True
+        if self.shaker:
+            self.shaker.active = True
 
     def halt(self):
         self.active = False
+        if self.shaker:
+            self.shaker.active = False
 
     def status(self):
         return dict(active=self.active, interval=self.interval)
+
+
+class Shaker:
+    """Uses a servo to stir balls"""
+    def __init__(self, servo_pin: int):
+        self._pin_no = servo_pin
+        self.servo = Servo(servo_pin)
+        self.active = False
+
+
+    async def run(self):
+        while True:
+            await asyncio.sleep(self.interval)
+            if self.active:
+                self.servo.__motor.duty_ns(1575000)
+            else:
+                self.servo.__motor.duty_ns(1570000)
+
+
 
 class ESC:
     def __init__(self, pin, name, freq=50):
