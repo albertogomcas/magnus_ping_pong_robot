@@ -39,7 +39,15 @@ class STServo:
         else:
             angle = self._convert_to_angle(sts_present_position)
             angular_speed = self._convert_to_angle(sts_present_speed)
-            print(f"[ID:{self.servo_id}] Angle:{angle:.1f} deg Spd:{angular_speed:.2f} deg/s")
+            #print(f"[ID:{self.servo_id}] Angle:{angle:.1f} deg Spd:{angular_speed:.2f} deg/s")
+
+            status = dict(
+                servo_id=self.servo_id,
+                angle=angle,
+                speed=angular_speed,
+                moving=self.is_moving(),
+            )
+            return status
         if sts_error != 0:
             print(self.sts.getRxPacketError(sts_error))
 
@@ -52,17 +60,26 @@ class STServo:
         return bool(moving)
 
     def move(self, angle, speed=None, acc=None):
-        speed = self._convert_to_pos(speed) if speed else self._convert_to_pos(self.default_speed)
-        acc = self._convert_to_pos(acc) if acc else self._convert_to_pos(self.default_acc)
+        speed = self._convert_to_pos(speed) if speed is not None else self._convert_to_pos(self.default_speed)
+        acc = self._convert_to_pos(acc) if acc is not None else self._convert_to_pos(self.default_acc)
 
         comm_result, error = self.sts.WritePosEx(self.servo_id, self._convert_to_pos(angle), speed, acc)
         if comm_result != COMM_SUCCESS:
             raise Exception(self.sts.getTxRxResult(comm_result))
 
-    def set_wheel_mode(self):
-        comm_result = self.sts.WheelMode(self.servo_id)
+    def set_servo_mode(self):
+        comm_result, error = self.sts.Mode(self.servo_id, mode=0)
         if comm_result != COMM_SUCCESS:
             raise Exception(self.sts.getTxRxResult(comm_result))
+    def set_wheel_mode_closed_loop(self):
+        comm_result, error = self.sts.Mode(self.servo_id, mode=1)
+        if comm_result != COMM_SUCCESS:
+            raise Exception(self.sts.getTxRxResult(comm_result))
+
+    # def set_wheel_mode_open_loop(self):
+    #     comm_result, error = self.sts.Mode(self.servo_id, mode=2)
+    #     if comm_result != COMM_SUCCESS:
+    #         raise Exception(self.sts.getTxRxResult(comm_result))
 
     def program_movement(self, angle, speed=None, acc=None):
         """Setups a movement, but does not execute it until action is called"""
@@ -79,6 +96,9 @@ class STServo:
         comm_result, error = self.sts.WriteSpec(self.servo_id, speed, acc)
         if comm_result != COMM_SUCCESS:
             raise Exception(self.sts.getTxRxResult(comm_result))
+
+    def calibrate_middle(self):
+        self.sts.CalibrateMiddle(self.servo_id)
 
     def action(self):
         "Executes all setup movements (in all servos!)"
@@ -100,3 +120,7 @@ if __name__ == "__main__":
 
     st.ping()
     st.status()
+
+    #st.move(360)
+    #st.move(0)
+

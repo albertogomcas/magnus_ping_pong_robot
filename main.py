@@ -18,18 +18,26 @@ def run():
 
 program_pin = Pin(19, Pin.IN, Pin.PULL_UP)
 
-if not program_pin.value():
-    print("Stop program")
-else:
-    print("Continue program")
-    connect()
-    try:
-        run()
-    except:
-        esp_app.shutdown()
-        raise
+# if not program_pin.value():
+#     print("Stop program")
+# else:
+#     print("Continue program")
+#     connect()
+#     try:
+#         run()
+#     except:
+#         esp_app.shutdown()
+#         raise
 
+from machine import UART
+from stservo_wrapper import STServo
+from stservo.port_handler import PortHandlerMicroPython
 
+uart = UART(1, baudrate=1000000, tx=Pin(17), rx=Pin(16))
+port_handler = PortHandlerMicroPython(uart)
+s3 = STServo(port_handler, servo_id=3)
+s6 = STServo(port_handler, servo_id=6)
+s9 = STServo(port_handler, servo_id=9)
 
 
 

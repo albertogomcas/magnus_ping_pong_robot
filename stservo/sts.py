@@ -93,8 +93,12 @@ class sts(protocol_packet_handler):
     def RegAction(self):
         return self.action(BROADCAST_ID)
 
-    def WheelMode(self, sts_id):
-        return self.write1ByteTxRx(sts_id, STS_MODE, 1)
+    def Mode(self, sts_id, mode):
+        assert mode in [0, 1, 2]
+        return self.write1ByteTxRx(sts_id, STS_MODE, mode)
+
+    def CalibrateMiddle(self, sts_id):
+        return self.write1ByteTxRx(sts_id, STS_TORQUE_ENABLE, 128)
 
     def WriteSpec(self, sts_id, speed, acc):
         speed = self.sts_toscs(speed, 15)

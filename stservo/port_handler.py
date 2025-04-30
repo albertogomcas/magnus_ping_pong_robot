@@ -1,14 +1,19 @@
 #!/usr/bin/env python
 
 import time
-import serial
 import sys
 import platform
+
+try:
+    from machine import UART  # MicroPython
+except ImportError:
+    UART = None  # fallback if running in CPython
+    import serial
 
 DEFAULT_BAUDRATE = 1000000
 LATENCY_TIMER = 50 
 
-class PortHandler(object):
+class PortHandler:
     def __init__(self, port_name):
         self.is_open = False
         self.baudrate = DEFAULT_BAUDRATE
@@ -112,4 +117,52 @@ class PortHandler(object):
         if baudrate in [4800, 9600, 14400, 19200, 38400, 57600, 115200, 128000, 250000, 500000, 1000000]:
             return baudrate
         else:
-            return -1          
+            return -1
+
+
+# Subclass for MicroPython
+class PortHandlerMicroPython(PortHandler):
+    def __init__(self, uart):
+        super().__init__("uart")
+        self.ser = uart
+
+    def closePort(self):
+        if self.ser:
+            self.ser.deinit()
+        self.is_open = False
+
+    def clearPort(self):
+        while self.ser.any():
+            self.ser.read()
+
+    def getBytesAvailable(self):
+        return self.ser.any()
+
+    def readPort(self, length):
+        return self.ser.read(length) or b''
+
+    def writePort(self, packet):
+        if isinstance(packet, (list, tuple)):
+            packet = bytes(packet)
+        elif isinstance(packet, str):
+            packet = packet.encode("utf-8")
+        return self.ser.write(packet)
+
+    def getCurrentTime(self):
+        return time.ticks_ms()
+
+    def getTimeSinceStart(self):
+        return time.ticks_diff(self.getCurrentTime(), self.packet_start_time)
+
+    def setupPort(self, baudrate):
+        try:
+            self.tx_time_per_byte = (1000.0 / self.baudrate) * 10.0
+            self.is_open = True
+            return True
+        except Exception as e:
+            print("UART setup error:", e)
+            self.ser = None
+            self.is_open = False
+            return False
+
+

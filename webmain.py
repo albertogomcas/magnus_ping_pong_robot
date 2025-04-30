@@ -1,11 +1,12 @@
 import json
 from microdot import Microdot, Response
-from machine import Pin, ADC
+from machine import Pin, ADC, UART
 from ujrpc import JRPCService
 import time
 from parts import Feeder, Launcher, Aimer, Shaker
 import asyncio
 import math
+from stservo_wrapper import STServo
 
 class UsedPins():
     PROGRAM = 19  # pullup
@@ -13,10 +14,9 @@ class UsedPins():
     LAUNCHER_LEFT = 32
     LAUNCHER_TOP = 25
     LAUNCHER_RIGHT = 33
-    FEEDER_SERVO = 18
     SHAKER_SERVO = 5
-    AIMER_SERVO_V = 17
-    AIMER_SERVO_H = 16
+    ST_SERVO_TX = 17
+    ST_SERVO_RX = 16
 
     @classmethod
     def sanity_check(cls):
@@ -48,12 +48,18 @@ UsedPins.sanity_check()
 
 supply = Supply()
 shaker = Shaker(UsedPins.SHAKER_SERVO)
-feeder = Feeder(UsedPins.FEEDER_SERVO, shaker=shaker)
+ST_UART = UART(1, baudrate=1000000, tx=Pin(UsedPins.ST_SERVO_TX), rx=Pin(UsedPins.ST_SERVO_RX))
+feeder_servo = STServo(ST_UART, servo_id=9)
+feeder_servo.set_wheel_mode_closed_loop()
+feeder = Feeder(feeder_servo, shaker=shaker)
 feeder.halt()
 
 launcher = Launcher(UsedPins.LAUNCHER_TOP, UsedPins.LAUNCHER_LEFT, UsedPins.LAUNCHER_RIGHT)
 launcher.halt()
-aimer = Aimer(vaxis=UsedPins.AIMER_SERVO_V, haxis=UsedPins.AIMER_SERVO_H)
+
+vertical_servo = STServo(ST_UART, servo_id=3)
+horizontal_servo = STServo(ST_UART, servo_id=6)
+aimer = Aimer(vertical_servo, horizontal_servo)
 
 
 

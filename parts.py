@@ -4,69 +4,48 @@ from servo import Servo
 import time
 
 class Aimer:
-    def __init__(self, vaxis:str, haxis:str):
-        self.vaxis = vaxis
-        self.haxis = haxis
-        self.vservo = Servo(vaxis)
-        self.hservo = Servo(haxis)
+    def __init__(self, vservo, hservo):
+        self.vservo = vservo
+        self.hservo = hservo
 
-        self.vgain = 3
-        self.hgain = -1
+        self.vgain = 4
+        self.hgain = 4
+        self.vspeed = 50
+        self.hspeed = 50
 
         self.vlim_min = -20
-        self.voffset = 45
-        self.vlim_max = 35 + self.voffset
+        self.vlim_max = 20
 
-        self.hlim_min = -45
-        self.hoffset = 90
-        self.hlim_max = 45 + self.hoffset
+        self.hlim_min = -15
+        self.hlim_max = 15
 
-        self.vaim = 0
-        self.haim = 0
-        self.aim(0,0)
 
     def aim(self, vangle, hangle):
-        if vangle is not None:
-            vangle = min(max(self.vlim_min, self.vgain * vangle + self.voffset), self.vlim_max)
-            self.vaim = vangle
+        vangle = min(max(self.vlim_min, vangle), self.vlim_max)
+        hangle = min(max(self.hlim_min, hangle), self.hlim_max)
 
-        if hangle is not None:
-            hangle = min(max(self.hlim_min, self.hgain * hangle + self.hoffset), self.hlim_max)
-            self.haim = hangle
+        print(f"Aiming {vangle}V {hangle}H")
 
-        print(f"Aiming {vangle} ({self.vaim}V) {hangle} ({self.haim}H)")
-
-        vstart = self.vservo.current_angle
-        hstart = self.hservo.current_angle
-        steps = 1
-        vmove = vangle - vstart
-        hmove = hangle - hstart
-        for i in range(0, steps):
-            vinter = vstart + i/steps * vmove
-            hinter = hstart + i/steps * hmove
-            self.vservo.move(vinter)
-            self.hservo.move(hinter)
-            time.sleep_ms(20)
-
-        self.vservo.move(self.vaim)
-        self.hservo.move(self.haim)
+        self.vservo.move(180 + vangle*self.vgain, self.vspeed)
+        self.hservo.move(180 + hangle*self.hgain, self.hspeed)
 
     def status(self):
+        vangle_raw = self.vservo.status()["angle"]
+        hangle_raw = self.hservo.status()["angle"]
         return dict(
-            tilt=self.vaim / self.vgain - self.voffset,
-            pan=self.haim / self.hgain - self.hoffset,
+            tilt=vangle_raw/self.vgain - 180,
+            pan=hangle_raw/self.hgain - 180,
         )
 
 
 class Feeder:
-    """Uses a stepper to feed balls into the launcher"""
-    def __init__(self, servo_pin: int, shaker: None):
-        self._pin_no = servo_pin
-        self.servo = Servo(servo_pin)
+    """Uses a st servo in wheel mode to feed balls into the launcher"""
+    def __init__(self, st_servo, shaker: None):
+        self.st_servo = st_servo
         self.shaker = shaker
         self.active = False
         self.interval = 4
-        self.step = 70
+        self.deg_ball = 60 # new ball every 60deg
         self.wait = 0.25
 
     def set_ball_interval(self, seconds):
@@ -74,20 +53,15 @@ class Feeder:
         print(f"Ball interval: {self.interval}s")
 
     async def feed_one(self):
-        self.servo.move(0)
-        await asyncio.sleep(self.wait)
-        self.servo.move(self.step)
-        await asyncio.sleep(self.wait)
-        self.servo.move(0)
-        await asyncio.sleep(self.wait)
-
+        print("not implemented")
 
     async def run(self):
         while True:
-            await asyncio.sleep(self.interval)
             if self.active:
-                print("push ball")
-                await self.feed_one()
+                speed = self.deg_ball / 360 / self.interval
+                self.st_servo.move(0, speed)
+            else:
+                self.st_servo.move(0, 0)
 
     def activate(self):
         self.active = True
