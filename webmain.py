@@ -7,6 +7,7 @@ from parts import Feeder, Launcher, Aimer, Shaker
 import asyncio
 import math
 from stservo_wrapper import STServo
+from stservo.port_handler import PortHandlerMicroPython
 
 class UsedPins():
     PROGRAM = 19  # pullup
@@ -14,9 +15,9 @@ class UsedPins():
     LAUNCHER_LEFT = 32
     LAUNCHER_TOP = 25
     LAUNCHER_RIGHT = 33
-    SHAKER_SERVO = 5
-    ST_SERVO_TX = 17
-    ST_SERVO_RX = 16
+    SHAKER_SERVO = 21
+    ST_SERVO_TX = 23
+    ST_SERVO_RX = 22
 
     @classmethod
     def sanity_check(cls):
@@ -47,18 +48,18 @@ UsedPins.sanity_check()
 
 
 supply = Supply()
-shaker = Shaker(UsedPins.SHAKER_SERVO)
 ST_UART = UART(1, baudrate=1000000, tx=Pin(UsedPins.ST_SERVO_TX), rx=Pin(UsedPins.ST_SERVO_RX))
-feeder_servo = STServo(ST_UART, servo_id=9)
-feeder_servo.set_wheel_mode_closed_loop()
+port_handler = PortHandlerMicroPython(ST_UART)
+feeder_servo = STServo(port_handler, servo_id=9)
+shaker = Shaker(UsedPins.SHAKER_SERVO)
+
 feeder = Feeder(feeder_servo, shaker=shaker)
-feeder.halt()
 
 launcher = Launcher(UsedPins.LAUNCHER_TOP, UsedPins.LAUNCHER_LEFT, UsedPins.LAUNCHER_RIGHT)
 launcher.halt()
 
-vertical_servo = STServo(ST_UART, servo_id=3)
-horizontal_servo = STServo(ST_UART, servo_id=6)
+vertical_servo = STServo(port_handler, servo_id=3)
+horizontal_servo = STServo(port_handler, servo_id=6)
 aimer = Aimer(vertical_servo, horizontal_servo)
 
 
@@ -105,6 +106,7 @@ async def main():
 
                 if value:
                     calibrate(launcher)
+                    feeder_servo.set_wheel_mode_closed_loop()
                     calibrated = True
                     wait = 0
 

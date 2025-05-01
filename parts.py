@@ -8,7 +8,7 @@ class Aimer:
         self.vservo = vservo
         self.hservo = hservo
 
-        self.vgain = 4
+        self.vgain = -4
         self.hgain = 4
         self.vspeed = 50
         self.hspeed = 50
@@ -24,17 +24,24 @@ class Aimer:
         vangle = min(max(self.vlim_min, vangle), self.vlim_max)
         hangle = min(max(self.hlim_min, hangle), self.hlim_max)
 
-        print(f"Aiming {vangle}V {hangle}H")
+        print(f"Aimer: Aiming to {vangle}V {hangle}H")
 
         self.vservo.move(180 + vangle*self.vgain, self.vspeed)
         self.hservo.move(180 + hangle*self.hgain, self.hspeed)
 
     def status(self):
-        vangle_raw = self.vservo.status()["angle"]
-        hangle_raw = self.hservo.status()["angle"]
+        try:
+            vangle_raw = self.vservo.status()["angle"]
+            hangle_raw = self.hservo.status()["angle"]
+        except:
+            return dict(
+                tilt=0,
+                pan=0,
+            )
+
         return dict(
-            tilt=vangle_raw/self.vgain - 180,
-            pan=hangle_raw/self.hgain - 180,
+            tilt=(vangle_raw - 180)/self.vgain,
+            pan=(hangle_raw - 180)/self.hgain,
         )
 
 
@@ -50,25 +57,31 @@ class Feeder:
 
     def set_ball_interval(self, seconds):
         self.interval = max(0.5, seconds)
-        print(f"Ball interval: {self.interval}s")
+        print(f"Feeder: Ball interval set to {self.interval}s")
 
     async def feed_one(self):
         print("not implemented")
 
     async def run(self):
         while True:
+            await asyncio.sleep(self.wait)
             if self.active:
-                speed = self.deg_ball / 360 / self.interval
+                speed = self.deg_ball / self.interval
                 self.st_servo.move(0, speed)
             else:
-                self.st_servo.move(0, 0)
+                try:
+                    self.st_servo.move(0, 0)
+                except:
+                    pass
 
     def activate(self):
+        print("Feeder: Activate")
         self.active = True
         if self.shaker:
             self.shaker.active = True
 
     def halt(self):
+        print("Feeder: Halt")
         self.active = False
         if self.shaker:
             self.shaker.active = False
