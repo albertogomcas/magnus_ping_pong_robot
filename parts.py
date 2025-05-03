@@ -9,7 +9,7 @@ class Aimer:
         self.hservo = hservo
 
         self.vgain = -4
-        self.hgain = 4
+        self.hgain = -4
         self.vspeed = 50
         self.hspeed = 50
 
@@ -44,6 +44,9 @@ class Aimer:
             pan=(hangle_raw - 180)/self.hgain,
         )
 
+    def calibrate(self):
+        self.vservo.calibrate_middle()
+        self.hservo.calibrate_middle()
 
 class Feeder:
     """Uses a st servo in wheel mode to feed balls into the launcher"""
