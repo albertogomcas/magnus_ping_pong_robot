@@ -47,6 +47,7 @@ class Aimer:
     def calibrate(self):
         self.vservo.calibrate_middle()
         self.hservo.calibrate_middle()
+        return True
 
 class Feeder:
     """Uses a st servo in wheel mode to feed balls into the launcher"""

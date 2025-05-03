@@ -75,7 +75,16 @@ def robot_status():
 # Shiny UI layout
 app_ui = ui.page_fluid(
     ui.h2("Magnus WebUI"),
-
+    ui.tags.style("""
+        .shiny-input-container.switch label {
+            font-size: 1.4em;
+        }
+    
+        .form-check.form-switch .form-check-input {
+            transform: scale(1.5);
+            margin-right: 10px;
+        }
+    """),
     ui.page_navbar(
         ui.nav_panel("Control",  # Second tab
                     ui.output_ui("status_ui"),
@@ -93,7 +102,6 @@ app_ui = ui.page_fluid(
                      ),
                      ui.input_action_button("save_preset", "Save Preset"),
                      ui.hr(),
-                     ui.input_action_button("feed_one", "Feed One Ball"),
                      ui.input_switch("feeder_active", "Continuous Feed", False),
                      ui.input_slider("feed_interval", "Ball Feed Interval (s)", min=1, max=10, value=5, step=0.5),
                      ui.input_slider("shaker_tuning", "Shaker tuning", min=-100, max=100, value=0, step=1),
@@ -107,6 +115,10 @@ app_ui = ui.page_fluid(
             "Target",
             ui.output_plot("table", width="400px", height="400px"),
             ui.output_text("click_info"),
+        ),
+        ui.nav_panel(
+          "Calibrate",
+            ui.input_action_button("calibrate_btn", "Calibrate Aim Zero"),
         ),
         title=ui.output_text("status_navbar_ui"),
     )
@@ -164,20 +176,24 @@ def server(input, output, session):
         print(response)  # Output response for debugging
         return ui.notification_show("Settings sent to RoboPong!", type="success", duration=0.25)
 
-    # Handle the "Feed One" button press
     @reactive.effect
-    @reactive.event(input.feed_one)
-    def feed_one():
+    @reactive.event(input.calibrate_btn)
+    def calibrate_aim_zero():
         url = robot_url + "/rpc"
         payload = {
             "jsonrpc": "2.0",
-            "method": "feed_one",
-            "id": 3,
+            "method": "calibrate_aim_zero",
+            "id": 4,
         }
         headers = {'Content-Type': 'application/json'}
-        response = requests.post(url, headers=headers, json=payload, verify=False)
-
-        return ui.notification_show(f"Feeding one ball...", type="info", duration=0.25)
+        try:
+            response = requests.post(url, headers=headers, json=payload, verify=False)
+            result = response.json()
+            print(result)
+            ui.notification_show("Calibration command sent!", type="success", duration=1)
+        except Exception as e:
+            print(f"Calibration failed: {e}")
+            ui.notification_show("Calibration failed.", type="error", duration=1)
 
     # Handle the "Save Preset" button press
     @reactive.Effect

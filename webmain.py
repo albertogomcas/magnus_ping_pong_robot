@@ -177,10 +177,12 @@ def feed_one(r):
         print("Launcher not active, not feeding")
     return status(r)
 
-@jrpc.fn(name="calibrate_aim")
-def calibrate_aim(r):
-    aimer.calibrate()
-    return status(r)
+@jrpc.fn(name="calibrate_aim_zero")
+def calibrate_aim_zero(r):
+    try:
+        return aimer.calibrate()
+    except:
+        return False
 
 @jrpc.fn(name="sync_settings")
 def sync_settings(r, settings):
