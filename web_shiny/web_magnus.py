@@ -11,6 +11,17 @@ robot_url = "http://10.0.0.47"
 PRESET_FILE = "presets.json"
 
 
+def save_current_settings(settings):
+    """Save current settings to a file"""
+    with open("current_settings.json", "w") as f:
+        json.dump(settings, f)
+
+def load_current_settings():
+    """Load current settings from file if it exists"""
+    if os.path.exists("current_settings.json"):
+        with open("current_settings.json", "r") as f:
+            return json.load(f)
+    return None
 
 def save_preset_to_file(name, preset):
     """ Save the preset to a JSON file """
@@ -272,6 +283,36 @@ def server(input, output, session):
             click_data = input.plot_click()
             return f"Clicked at: x={click_data['x']:.2f}, y={click_data['y']:.2f}"
         return "Click on the plot to see coordinates."
+
+    @reactive.Effect
+    def load_settings_on_startup():
+        settings = load_current_settings()
+        if settings:
+            ui.update_switch("launcher_active", value=False) #settings.get("launcher_active", False))
+            ui.update_slider("speed", value=settings.get("speed", 0))
+            ui.update_slider("spin_angle", value=settings.get("spin_angle", 0))
+            ui.update_slider("spin_strength", value=settings.get("spin_strength", 0))
+            ui.update_slider("pan", value=settings.get("pan", 0))
+            ui.update_slider("tilt", value=settings.get("tilt", 0))
+            ui.update_switch("feeder_active", value=settings.get("feeder_active", False))
+            ui.update_slider("feed_interval", value=settings.get("feed_interval", 5))
+            ui.update_slider("shaker_tuning", value=settings.get("shaker_tuning", 0))
+
+    # Save settings whenever they change
+    @reactive.Effect
+    def save_settings_on_change():
+        settings = {
+            "launcher_active": input.launcher_active(),
+            "speed": input.speed(),
+            "spin_angle": input.spin_angle(),
+            "spin_strength": input.spin_strength(),
+            "pan": input.pan(),
+            "tilt": input.tilt(),
+            "feeder_active": input.feeder_active(),
+            "feed_interval": input.feed_interval(),
+            "shaker_tuning": input.shaker_tuning(),
+        }
+        save_current_settings(settings)
 
 # Create the Shiny app
 app = App(app_ui, server)
