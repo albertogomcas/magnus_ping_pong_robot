@@ -13,8 +13,8 @@ class Aimer:
         self.vspeed = 50
         self.hspeed = 50
 
-        self.vlim_min = -20
-        self.vlim_max = 20
+        self.vlim_min = -25
+        self.vlim_max = 35
 
         self.hlim_min = -15
         self.hlim_max = 15
