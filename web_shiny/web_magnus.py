@@ -10,6 +10,8 @@ import matplotlib.pyplot as plt
 robot_url = "http://10.0.0.47"
 PRESET_FILE = "presets.json"
 
+current_sequence_index = reactive.Value(0)
+sequence_running = reactive.Value(False)
 
 def save_current_settings(settings):
     """Save current settings to a file"""
@@ -123,6 +125,20 @@ app_ui = ui.page_fluid(
                      ui.output_ui("preset_ui"),
                      ),
         ui.nav_panel(
+            "Sequence",
+            ui.input_selectize(
+                "sequence_presets",
+                "Select Presets for Sequence",
+                choices=[],  # Will be populated dynamically
+                multiple=True
+            ),
+            ui.input_numeric("sequence_repeats", "Number of Repeats", value=1, min=1),
+            ui.input_action_button("run_sequence", "Run Sequence"),
+            ui.output_text("sequence_status"),
+            ui.output_text("sequence_progress"),
+            ui.output_text("current_preset"),
+        ),
+        ui.nav_panel(
             "Target",
             ui.output_plot("table", width="400px", height="400px"),
             ui.output_text("click_info"),
@@ -142,6 +158,112 @@ def server(input, output, session):
     session.preset_list = reactive.value([])
     session.selected_preset = reactive.value("")
     session.preset_summary = reactive.value("No preset loaded")
+    session.sequence_active = reactive.value(0)
+    session.current_sequence_step = reactive.value(0)
+    session.sequence_total_steps = reactive.value(0)
+    session.current_preset_name = reactive.value("")
+
+    @reactive.Effect
+    def update_sequence_preset_choices():
+        session.preset_list()  # Dependency on preset list changes
+        ui.update_selectize(
+            "sequence_presets",
+            choices=session.preset_list(),
+            selected=input.sequence_presets()
+        )
+
+    # Run sequence when button is pressed
+
+    @reactive.effect
+    @reactive.event(input.start_sequence_btn)
+    def start_sequence():
+        if not sequence.get():
+            ui.notification_show("No presets in sequence", type="warning")
+            return
+        sequence_running.set(True)
+        current_sequence_index.set(0)
+
+    # Stop sequence when button is pressed
+    @reactive.Effect
+    @reactive.event(input.stop_sequence)
+    def stop_sequence():
+        session.sequence_active.set(False)
+        ui.notification_show("Sequence stopped", type="warning")
+
+    # Recursive function to run sequence steps
+    def run_next_sequence_step():
+        if not session.sequence_active():
+            return
+
+        presets = input.sequence_presets()
+        repeats = input.sequence_repeats()
+        current_step = session.current_sequence_step()
+
+        if current_step >= len(presets) * repeats:
+            session.sequence_active.set(False)
+            ui.notification_show("Sequence completed!", type="message")
+            return
+
+        # Calculate which preset to run
+        preset_index = current_step % len(presets)
+        preset_name = presets[preset_index]
+        session.current_preset_name.set(preset_name)
+
+        # Load the preset
+        presets_dict = load_presets_from_file()
+        if preset_name in presets_dict:
+            preset = presets_dict[preset_name]
+            ui.update_slider("speed", value=preset["speed"])
+            ui.update_slider("spin_angle", value=preset["spin_angle"])
+            ui.update_slider("spin_strength", value=preset["spin_strength"])
+            ui.update_slider("pan", value=preset["pan"])
+            ui.update_slider("tilt", value=preset["tilt"])
+
+            # Send settings to robot
+            sync_settings(
+                feeder_active=input.feeder_active(),
+                launcher_active=True,  # Activate launcher for sequence
+                speed=preset["speed"],
+                spin_angle=preset["spin_angle"],
+                spin_strength=preset["spin_strength"],
+                pan=preset["pan"],
+                tilt=preset["tilt"],
+                feed_interval=input.feed_interval(),
+                shaker=input.shaker_tuning(),
+            )
+
+            # Update progress
+            session.current_sequence_step.set(current_step + 1)
+
+            # Schedule next step after a delay (e.g., 2 seconds)
+            reactive.invalidate_later(2)  # 2 second delay between presets
+            run_next_sequence_step()
+
+    # Display sequence status
+    @output
+    @render.text
+    def sequence_status():
+        if session.sequence_active():
+            return "🟢 Sequence is running"
+        return "🔴 Sequence is ready"
+
+    # Display sequence progress
+    @output
+    @render.text
+    def sequence_progress():
+        if session.sequence_total_steps() > 0:
+            current = session.current_sequence_step()
+            total = session.sequence_total_steps()
+            return f"Progress: {current} of {total} steps completed"
+        return ""
+
+    # Display current preset
+    @output
+    @render.text
+    def current_preset():
+        if session.sequence_active() and session.current_preset_name():
+            return f"Current preset: {session.current_preset_name()}"
+        return ""
 
     # Render status UI based on robot connection status
     @output()
