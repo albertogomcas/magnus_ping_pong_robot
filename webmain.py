@@ -1,4 +1,3 @@
-import json
 from microdot import Microdot, Response
 from machine import Pin, ADC, UART
 from ujrpc import JRPCService
@@ -8,6 +7,7 @@ import asyncio
 import math
 from stservo_wrapper import STServo
 from stservo.port_handler import PortHandlerMicroPython
+from dev import offline_mode
 
 class UsedPins():
     PROGRAM = 19  # pullup
@@ -35,6 +35,8 @@ class Supply():
         self.esc_alive_pin = ADC(Pin(UsedPins.ESC_ALIVE))
 
     def esc_alive(self):
+        if offline_mode:
+            return True
         return self.esc_alive_pin.read() > 3500
 
     def status(self):

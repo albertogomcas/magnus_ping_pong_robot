@@ -1,7 +1,7 @@
 from machine import Pin, PWM
 import asyncio
 from servo import Servo
-import time
+from dev import offline_mode
 
 class Aimer:
     def __init__(self, vservo, hservo):
@@ -19,20 +19,28 @@ class Aimer:
         self.hlim_min = -15
         self.hlim_max = 15
 
+        self._shadow = (0, 0)
+
 
     def aim(self, vangle, hangle):
         vangle = min(max(self.vlim_min, vangle), self.vlim_max)
         hangle = min(max(self.hlim_min, hangle), self.hlim_max)
 
         print(f"Aimer: Aiming to {vangle}V {hangle}H")
+        self._shadow = (180 + vangle*self.vgain, 180 + hangle*self.hgain)
 
-        self.vservo.move(180 + vangle*self.vgain, self.vspeed)
-        self.hservo.move(180 + hangle*self.hgain, self.hspeed)
+        if not offline_mode:
+            self.vservo.move(180 + vangle*self.vgain, self.vspeed)
+            self.hservo.move(180 + hangle*self.hgain, self.hspeed)
+
 
     def status(self):
         try:
-            vangle_raw = self.vservo.status()["angle"]
-            hangle_raw = self.hservo.status()["angle"]
+            if not offline_mode:
+                vangle_raw = self.vservo.status()["angle"]
+                hangle_raw = self.hservo.status()["angle"]
+            else:
+                vangle_raw, hangle_raw = self._shadow
         except:
             return dict(
                 tilt=0,
@@ -45,8 +53,9 @@ class Aimer:
         )
 
     def calibrate(self):
-        self.vservo.calibrate_middle()
-        self.hservo.calibrate_middle()
+        if not offline_mode:
+            self.vservo.calibrate_middle()
+            self.hservo.calibrate_middle()
         return True
 
 class Feeder:
@@ -71,10 +80,12 @@ class Feeder:
             await asyncio.sleep(self.wait)
             if self.active:
                 speed = self.deg_ball / self.interval
-                self.st_servo.move(0, speed)
+                if not offline_mode:
+                    self.st_servo.move(0, speed)
             else:
                 try:
-                    self.st_servo.move(0, 0)
+                    if not offline_mode:
+                        self.st_servo.move(0, 0)
                 except:
                     pass
 
