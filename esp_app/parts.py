@@ -1,7 +1,9 @@
+import time
+
 from machine import Pin, PWM
 import asyncio
 from servo import Servo
-from dev import offline_mode
+from dev import DevFlags
 
 class Aimer:
     def __init__(self, vservo, hservo):
@@ -29,14 +31,14 @@ class Aimer:
         print(f"Aimer: Aiming to {vangle}V {hangle}H")
         self._shadow = (180 + vangle*self.vgain, 180 + hangle*self.hgain)
 
-        if not offline_mode:
+        if not DevFlags.simulation_mode:
             self.vservo.move(180 + vangle*self.vgain, self.vspeed)
             self.hservo.move(180 + hangle*self.hgain, self.hspeed)
 
 
     def status(self):
         try:
-            if not offline_mode:
+            if not DevFlags.simulation_mode:
                 vangle_raw = self.vservo.status()["angle"]
                 hangle_raw = self.hservo.status()["angle"]
             else:
@@ -53,7 +55,7 @@ class Aimer:
         )
 
     def calibrate(self):
-        if not offline_mode:
+        if not DevFlags.simulation_mode:
             self.vservo.calibrate_middle()
             self.hservo.calibrate_middle()
         return True
@@ -80,11 +82,11 @@ class Feeder:
             await asyncio.sleep(self.wait)
             if self.active:
                 speed = self.deg_ball / self.interval
-                if not offline_mode:
+                if not DevFlags.simulation_mode:
                     self.st_servo.move(0, speed)
             else:
                 try:
-                    if not offline_mode:
+                    if not DevFlags.simulation_mode:
                         self.st_servo.move(0, 0)
                 except:
                     pass
@@ -114,13 +116,20 @@ class Shaker:
         self.servo.__motor.duty_ns(self.stop_ns)
         self.move_us = 0
         self.active = False
+        self.cycle = 60 # change direction sometimes
+        self.reverse = 1
 
 
     async def run(self):
+        last_cycle = time.time()
         while True:
             await asyncio.sleep(1)
+            if time.time() - last_cycle > self.cycle:
+                self.reverse *= -1
+                last_cycle = time.time()
+
             if self.active:
-                self.servo.__motor.duty_ns(int(self.stop_ns + self.move_us * 1e3))
+                self.servo.__motor.duty_ns(int(self.stop_ns + self.reverse * self.move_us * 1e3))
             else:
                 self.servo.__motor.duty_ns(self.stop_ns)
 

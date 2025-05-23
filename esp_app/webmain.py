@@ -1,5 +1,9 @@
+import json
 from microdot import Microdot, Response
+import machine
 from machine import Pin, ADC, UART
+
+import dev
 from ujrpc import JRPCService
 import time
 from parts import Feeder, Launcher, Aimer, Shaker
@@ -7,7 +11,7 @@ import asyncio
 import math
 from stservo_wrapper import STServo
 from stservo.port_handler import PortHandlerMicroPython
-from dev import offline_mode
+from dev import DevFlags
 
 class UsedPins():
     PROGRAM = 19  # pullup
@@ -35,7 +39,7 @@ class Supply():
         self.esc_alive_pin = ADC(Pin(UsedPins.ESC_ALIVE))
 
     def esc_alive(self):
-        if offline_mode:
+        if DevFlags.simulation_mode:
             return True
         return self.esc_alive_pin.read() > 3500
 
@@ -154,7 +158,7 @@ esp_app = Microdot()
 
 @esp_app.get("/")
 async def index(request):
-    return "robopong is ready"
+    return "Magnus ESP32 is ready"
 
 @esp_app.route('/rpc', methods=["POST"])
 async def rpc(request):
@@ -227,3 +231,21 @@ def sync_settings(r, settings):
         feeder.halt()
 
     return status(r)
+
+@jrpc.fn(name="restart")
+def restart(r):
+    machine.reset()
+
+@jrpc.fn(name="customize_next_boot")
+def customize_next_boot(r, instructions):
+    print(f"Saving instructions for next boot {instructions}")
+    with open("custom_boot.json", "wt+") as f:
+        json.dump(instructions, f)
+
+@jrpc.fn(name="enable_simulation")
+def enable_simulation(r):
+    dev.DevFlags.simulation_mode = True
+
+@jrpc.fn(name="disable_simulation")
+def disable_simulation(r):
+    dev.DevFlags.simulation_mode = False
