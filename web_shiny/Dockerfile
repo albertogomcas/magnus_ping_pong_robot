@@ -25,4 +25,4 @@ EXPOSE 8000
 
 # Run the Shiny app
 #CMD ["sh", "-c", "git clone https://github.com/youruser/yourrepo.git app && cd app && shiny run app.py --host 0.0.0.0 --port 8000"]
-CMD ["shiny", "run", "web_magnus.py", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["shiny", "run", "app.py", "--host", "0.0.0.0", "--port", "8000"]
