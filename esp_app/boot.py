@@ -2,7 +2,7 @@ import dev
 import json
 import os
 import network
-from esp_app.secrets import Wifi
+from secrets import Wifi
 import time
 
 def exists(path):
@@ -48,7 +48,7 @@ try:
         dev.DevFlags.run_app = boot["run_app"]
 
         if boot["update_app"]:
-            dev.update()
+            dev.update(boot["update_app"])
 
 except:
     raise
