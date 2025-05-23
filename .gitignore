@@ -1,0 +1,19 @@
+# Python bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+
+# IDE files
+.idea/
+.vscode/
+
+# Environment
+venv/
+env/
+.env
+
+# Logs
+*.log
+
+# Local settings
+web_shiny/current_settings.json
