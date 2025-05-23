@@ -46,9 +46,9 @@ try:
     if boot:
         dev.DevFlags.simulation_mode = boot["simulation_mode"]
         dev.DevFlags.run_app = boot["run_app"]
-
-        if boot["update_app"]:
-            dev.update(boot["update_app"])
+        if boot["webrepl"]:
+            import webrepl
+            webrepl.start()
 
 except:
     raise
