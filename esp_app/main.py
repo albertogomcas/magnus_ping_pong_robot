@@ -19,6 +19,9 @@ else:
         esp_app.shutdown()
         raise
 
+print("Start webrepl")
+import webrepl
+webrepl.start()
 
 
 

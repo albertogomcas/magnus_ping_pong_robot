@@ -232,15 +232,14 @@ def sync_settings(r, settings):
 
     return status(r)
 
-@jrpc.fn(name="restart")
-def restart(r):
+@jrpc.fn(name="reset")
+def reset(r):
     machine.reset()
 
-@jrpc.fn(name="customize_next_boot")
-def customize_next_boot(r, instructions):
-    print(f"Saving instructions for next boot {instructions}")
-    with open("custom_boot.json", "wt+") as f:
-        json.dump(instructions, f)
+@jrpc.fn(name="interrupt")
+def interrupt(r):
+    print(f"interrupting server")
+    esp_app.shutdown()
 
 @jrpc.fn(name="enable_simulation")
 def enable_simulation(r):

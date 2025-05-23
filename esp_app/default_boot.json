@@ -1,5 +1,4 @@
 {
   "simulation_mode": false,
-  "run_app": true,
-  "webrepl": false
+  "run_app": true
 }

@@ -61,7 +61,7 @@ def sync_settings(feeder_active, launcher_active, speed, spin_angle, spin_streng
         "id": 1,
     }
     headers = {'Content-Type': 'application/json'}
-    response = requests.post(url, headers=headers, json=payload, verify=False)
+    response = requests.post(url, headers=headers, json=payload, verify=False, timeout=1)
     return response.json()
 
 
@@ -142,6 +142,7 @@ app_ui = ui.page_fluid(
             ui.input_action_button("reset", "Reset ESP32"),
             ui.input_action_button("enable_simulation", "Enable simulation mode"),
             ui.input_action_button("disable_simulation", "Disable simulation mode"),
+            ui.input_action_button("interrupt_server", "Interrupt jRPC server"),
         ),
         title=ui.output_text("status_navbar_ui"),
         id="main_tab",
@@ -221,13 +222,32 @@ def server(input, output, session):
         }
         headers = {'Content-Type': 'application/json'}
         try:
-            response = requests.post(url, headers=headers, json=payload, verify=False)
+            response = requests.post(url, headers=headers, json=payload, verify=False, timeout=1)
             result = response.json()
             print(result)
             ui.notification_show("Reset command sent!", type="success", duration=1)
         except Exception as e:
             print(f"Reset command failed: {e}")
             ui.notification_show("Reset command failed.", type="error", duration=1)
+
+    @reactive.Effect
+    @reactive.event(input.interrupt_server)
+    def interrupt_server():
+        url = robot_url + "/rpc"
+        payload = {
+            "jsonrpc": "2.0",
+            "method": "interrupt",
+            "id": 5,
+        }
+        headers = {'Content-Type': 'application/json'}
+        try:
+            response = requests.post(url, headers=headers, json=payload, verify=False, timeout=1)
+            result = response.json()
+            print(result)
+            ui.notification_show("Interrupt command sent!", type="success", duration=1)
+        except Exception as e:
+            print(f"Interrupt command failed: {e}")
+            ui.notification_show("Interrupt command failed.", type="error", duration=1)
 
     @reactive.Effect
     @reactive.event(input.enable_simulation)
@@ -240,7 +260,7 @@ def server(input, output, session):
         }
         headers = {'Content-Type': 'application/json'}
         try:
-            response = requests.post(url, headers=headers, json=payload, verify=False)
+            response = requests.post(url, headers=headers, json=payload, verify=False, timeout=1)
             result = response.json()
             print(result)
             ui.notification_show("Command sent!", type="success", duration=1)
@@ -259,7 +279,7 @@ def server(input, output, session):
         }
         headers = {'Content-Type': 'application/json'}
         try:
-            response = requests.post(url, headers=headers, json=payload, verify=False)
+            response = requests.post(url, headers=headers, json=payload, verify=False, timeout=1)
             result = response.json()
             print(result)
             ui.notification_show("Command sent!", type="success", duration=1)
@@ -278,7 +298,7 @@ def server(input, output, session):
         }
         headers = {'Content-Type': 'application/json'}
         try:
-            response = requests.post(url, headers=headers, json=payload, verify=False)
+            response = requests.post(url, headers=headers, json=payload, verify=False, timeout=1)
             result = response.json()
             print(result)
             ui.notification_show("Calibration command sent!", type="success", duration=1)
