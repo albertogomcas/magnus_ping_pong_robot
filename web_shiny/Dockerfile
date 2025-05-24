@@ -17,9 +17,6 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy app files
-COPY . .
-
 # Expose port (default for Shiny)
 EXPOSE 8000
 

@@ -5,7 +5,7 @@ from scipy.optimize import minimize, NonlinearConstraint, Bounds
 
 
 import matplotlib
-matplotlib.use('TkAgg')
+#matplotlib.use('TkAgg')
 
 # Constants
 g = 9.81  # Gravity (m/s^2)
