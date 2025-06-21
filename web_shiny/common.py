@@ -36,7 +36,7 @@ def load_presets_from_file():
     return {}
 
 # Function to sync settings with the robot
-def sync_settings(feeder_active, launcher_active, speed, spin_angle, spin_strength, pan, tilt, feed_interval, shaker):
+def sync_settings(feeder_active, launcher_active, speed, spin_angle, spin_strength, pan, tilt, feed_interval, shaker_f, shaker_r):
     url = robot_url + "/rpc"
     payload = {
         "jsonrpc": "2.0",
@@ -51,7 +51,8 @@ def sync_settings(feeder_active, launcher_active, speed, spin_angle, spin_streng
                 "pan": pan,
                 "tilt": tilt,
                 "feed_interval": feed_interval,
-                "shaker": shaker,
+                "shaker_f": shaker_f,
+                "shaker_r": shaker_r,
             }
         },
         "id": 1,

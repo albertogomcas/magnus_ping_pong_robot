@@ -36,10 +36,13 @@ with patch.dict('sys.modules', {
 }):
     # Import the module to test
     from esp_app.webmain import (
-        UsedPins, Supply, calibrate, activate, halt, 
+        calibrate, activate, halt,
         status, feed_one, calibrate_aim_zero, sync_settings,
         reset, interrupt, enable_simulation, disable_simulation
     )
+    from magnus import UsedPins
+    from parts import Supply
+
 
 def test_sanity_check_success():
     # Test when all pins are unique

@@ -1,9 +1,10 @@
 import time
 
-from machine import Pin, PWM
+from machine import Pin, PWM, ADC
 import asyncio
 from servo import Servo
 from dev import DevFlags
+
 
 class Aimer:
     def __init__(self, vservo, hservo):
@@ -115,9 +116,10 @@ class Shaker:
         self.stop_ns = 1570000
         self.servo.__motor.duty_ns(self.stop_ns)
         self.move_us = 0
+        self.reverse_move_us = 0
         self.active = False
         self.cycle = 60 # change direction sometimes
-        self.reverse = 1
+        self.reverse = False
 
 
     async def run(self):
@@ -125,11 +127,14 @@ class Shaker:
         while True:
             await asyncio.sleep(1)
             if time.time() - last_cycle > self.cycle:
-                self.reverse *= -1
+                self.reverse = not self.reverse
                 last_cycle = time.time()
 
             if self.active:
-                self.servo.__motor.duty_ns(int(self.stop_ns + self.reverse * self.move_us * 1e3))
+                if self.reverse:
+                    self.servo.__motor.duty_ns(int(self.stop_ns + self.move_us * 1e3))
+                else:
+                    self.servo.__motor.duty_ns(int(self.stop_ns - self.reverse_move_us * 1e3))
             else:
                 self.servo.__motor.duty_ns(self.stop_ns)
 
@@ -175,6 +180,22 @@ class ESC:
 
     def status(self):
         return f"{self.name}{self.speed:2.0f}"
+
+class Detector:
+    def __init__(self, pd_pin):
+        self._pd_pin = pd_pin
+        self._pd = Pin(pd_pin, Pin.IN)
+        self._last_pulse = 0
+        self._debounce = 25 #ms
+        self._pd.irq(trigger=Pin.IRQ_RISING, handler=self.handle_detection)
+
+    def handle_detection(self, pin):
+        if time.time() - self._last_pulse > self._debounce / 1e3:
+            print("Detected ball!")
+            self._last_pulse = time.time()
+
+    def status(self):
+        return dict(elapsed=time.time() - self._last_pulse)
 
 class Launcher:
     """Shoots balls using 3 brushless motors"""
@@ -278,4 +299,19 @@ class Launcher:
             left_speed=self.left_speed,
             topspin=self.topspin,
             sidespin=self.sidespin,
+        )
+
+
+class Supply():
+    def __init__(self, alive_pin):
+        self.esc_alive_pin = ADC(Pin(alive_pin))
+
+    def esc_alive(self):
+        if DevFlags.simulation_mode:
+            return True
+        return self.esc_alive_pin.read() > 3500
+
+    def status(self):
+        return dict(
+            esc_alive=self.esc_alive(),
         )
