@@ -50,6 +50,11 @@ class Magnus:
         self.vertical_servo = STServo(self.port_handler, servo_id=3)
         self.horizontal_servo = STServo(self.port_handler, servo_id=6)
         self.aimer = Aimer(self.vertical_servo, self.horizontal_servo)
+        self.sequence = []
+        self.active_sequence = False
+        self._randomize_sequence = False
+        self._sequence_idx = 0
+        self._sequence_task = None
 
     def calibrate(self):
         self.launcher.set_speed("all", 100, force=True)
@@ -74,6 +79,7 @@ class Magnus:
             "feeder": self.feeder.status(),
             "aim": self.aimer.status(),
             "detector": self.detector.status(),
+            "sequence": self.active_sequence,
         }
         return status
 
@@ -96,20 +102,20 @@ class Magnus:
 
         self.launcher.configure(speed=speed, topspin=topspin, sidespin=sidespin)
 
-        shaker_tuning_f = settings["shaker_f"]
-        shaker_tuning_r = settings["shaker_r"]
+        shaker_tuning_f = settings.get("shaker_f", None)
+        shaker_tuning_r = settings.get("shaker_r", None)
         if shaker_tuning_f is not None:
             self.shaker.move_us = shaker_tuning_f
         if shaker_tuning_r is not None:
             self.shaker.reverse_move_us = shaker_tuning_r
 
-        if settings["launcher_active"]:
+        if settings.get("launcher_active", False):
             self.launcher.activate()
         else:
             self.feeder.halt()
             self.launcher.halt()
 
-        if settings["feeder_active"]:
+        if settings.get("feeder_active", False):
             if self.launcher.active and self.launcher.speed > 0:
                 self.feeder.activate()
         else:
@@ -122,3 +128,35 @@ class Magnus:
             self.feeder.feed_one()
         else:
             print("Launcher not active, not feeding")
+
+    def set_sequence(self, sequence):
+        self.sequence = sequence
+        self.active_sequence = False
+
+    def start_sequence(self, randomize_order=False, feed_interval=1):
+        self._randomize_sequence = randomize_order
+        self.feeder.set_ball_interval(feed_interval)
+        self.active_sequence = True
+        self._sequence_task = asyncio.create_task(self.run_sequence())
+
+    def stop_sequence(self):
+        self.active_sequence = False
+
+    async def run_sequence(self):
+
+        while self.active_sequence:
+            self.set_settings(**self.sequence[self._sequence_idx], launcher_active=True, feeder_active=True)
+            await self.wait_detector()
+            self._sequence_idx += 1
+            if self._sequence_idx >= len(self.sequence):
+                self._sequence_idx = 0
+
+    async def wait_detector(self):
+        start = time.time()
+        while time.time() - start < 20:
+            await asyncio.sleep_ms(100)
+            if self.detector.status()["elapsed"] < 1:
+                break
+        else: # no break
+            print("Detector did not finish within 20 seconds, stopping sequence")
+            self.stop_sequence()

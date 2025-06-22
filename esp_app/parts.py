@@ -114,11 +114,13 @@ class Shaker:
         self._pin_no = servo_pin
         self.servo = Servo(servo_pin)
         self.stop_ns = 1570000
+        self.reverse_stop_ns = self.stop_ns - 500 * 1e3
         self.servo.__motor.duty_ns(self.stop_ns)
         self.move_us = 0
         self.reverse_move_us = 0
         self.active = False
-        self.cycle = 60 # change direction sometimes
+        self.forward_cycle = 60 # change direction sometimes
+        self.reverse_cycle = 5
         self.reverse = False
 
 
@@ -126,15 +128,20 @@ class Shaker:
         last_cycle = time.time()
         while True:
             await asyncio.sleep(1)
-            if time.time() - last_cycle > self.cycle:
-                self.reverse = not self.reverse
-                last_cycle = time.time()
+            if not self.reverse:
+                if time.time() - last_cycle > self.forward_cycle:
+                    self.reverse = True
+                    last_cycle = time.time()
+            else:
+                if time.time() - last_cycle > self.reverse_cycle:
+                    self.reverse = False
+                    last_cycle = time.time()
 
             if self.active:
                 if self.reverse:
                     self.servo.__motor.duty_ns(int(self.stop_ns + self.move_us * 1e3))
                 else:
-                    self.servo.__motor.duty_ns(int(self.stop_ns - self.reverse_move_us * 1e3))
+                    self.servo.__motor.duty_ns(int(self.reverse_stop_ns - self.reverse_move_us * 1e3))
             else:
                 self.servo.__motor.duty_ns(self.stop_ns)
 

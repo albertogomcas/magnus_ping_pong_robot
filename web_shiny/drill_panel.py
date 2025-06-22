@@ -1,91 +1,6 @@
 from shiny import ui, reactive, render, App
-import asyncio
-from common import load_presets_from_file, sync_settings
+from common import load_presets_from_file, sync_settings, set_sequence, start_sequence, stop_sequence
 import concurrent.futures
-import time
-import random
-pool = concurrent.futures.ThreadPoolExecutor()
-
-
-class DrillRunner:
-    cancel = False
-
-    @classmethod
-    def sync_run_drill(cls, drill_feed_interval, selected_presets, repetitions, randomize_order=False) -> None:
-        """Run the selected presets in sequence with the specified time gap."""
-        if not selected_presets:
-            return "No presets selected. Please select at least one preset."
-
-        presets = load_presets_from_file()
-        # Calculate total number of presets to run (including repetitions)
-        total_presets = len(selected_presets) * repetitions
-
-
-        preset_counter = 0
-
-        for rep in range(repetitions):
-            if cls.cancel:
-                break
-            # Create a copy of the selected presets for this repetition
-            rep_presets = list(selected_presets)
-
-            # Randomize order if enabled
-            if randomize_order:
-                random.shuffle(rep_presets)
-                print(f"Repetition {rep+1}/{repetitions}: Randomized order: {', '.join(rep_presets)}")
-            else:
-                print(f"Repetition {rep+1}/{repetitions}: Keeping original order")
-
-
-            for preset_name in rep_presets:
-                if preset_name not in presets:
-                    print(f"Preset '{preset_name}' not found, skipping.")
-                    preset_counter += 1
-                    continue
-
-                preset = presets[preset_name]
-                print(f"Running preset: {preset_name}")
-
-                try:
-                    response = sync_settings(
-                        feeder_active=True,
-                        launcher_active=True,
-                        speed=preset["speed"],
-                        spin_angle=preset["spin_angle"],
-                        spin_strength=preset["spin_strength"],
-                        pan=preset["pan"],
-                        tilt=preset["tilt"],
-                        feed_interval=drill_feed_interval,
-                        shaker=0  # Default value
-                    )
-                    print(f"  Settings sent: {preset}")
-                except Exception as e:
-                    print(f"  Error sending settings: {e}")
-
-                # Wait for the specified time gap
-                time.sleep(drill_feed_interval)
-
-                # Increment preset counter
-                preset_counter += 1
-
-        # Turn off the feeder and launcher when done
-        try:
-            response = sync_settings(
-                feeder_active=False,
-                launcher_active=False,
-                speed=0,
-                spin_angle=0,
-                spin_strength=0,
-                pan=0,
-                tilt=0,
-                feed_interval=drill_feed_interval,
-                shaker=0
-            )
-            print("✅ Drill complete")
-        except Exception as e:
-            print("Error turning off launcher and feeder")
-
-
 
 # UI for the Drill panel
 def ui_drill():
@@ -128,18 +43,18 @@ def server_drill(input, output, session):
     @reactive.effect
     @reactive.event(input.btn_start_drill)
     def run_drill() -> None:
-        if DrillRunner.cancel:
-            DrillRunner.cancel = False
-        loop = asyncio.get_event_loop()
-        loop.run_in_executor(pool, DrillRunner.sync_run_drill, input.drill_feed_interval(), input.selected_presets(), input.repetitions(), input.randomize_order())
-
+        presets = load_presets_from_file()
+        selected_preset_names = list(input.selected_presets())
+        selected_presets = [presets[name] for name in selected_preset_names]
+        response = set_sequence(selected_presets)
+        response = start_sequence(settings={"feed_interval":input.drill_feed_interval(), "randomize_order":input.randomize_order()})
 
     # Cancel the drill if the user presses "Cancel"
     @reactive.effect
     @reactive.event(input.btn_cancel_drill)
     def _cancel_drill():
-        DrillRunner.cancel = True
-        # Turn off the feeder and launcher when cancelled
+        stop_sequence()
+        # Turn off the feeder and launcher when canceled
         try:
             sync_settings(
                 feeder_active=False,
@@ -150,7 +65,6 @@ def server_drill(input, output, session):
                 pan=0,
                 tilt=0,
                 feed_interval=input.drill_feed_interval(),
-                shaker=0
             )
             ui.notification_show("Drill cancelled. Feeder and launcher turned off.", type="warning")
         except Exception as e:

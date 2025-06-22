@@ -36,7 +36,7 @@ def load_presets_from_file():
     return {}
 
 # Function to sync settings with the robot
-def sync_settings(feeder_active, launcher_active, speed, spin_angle, spin_strength, pan, tilt, feed_interval, shaker_f, shaker_r):
+def sync_settings(feeder_active, launcher_active, speed, spin_angle, spin_strength, pan, tilt, feed_interval, shaker_f=None, shaker_r=None):
     url = robot_url + "/rpc"
     payload = {
         "jsonrpc": "2.0",
@@ -56,6 +56,45 @@ def sync_settings(feeder_active, launcher_active, speed, spin_angle, spin_streng
             }
         },
         "id": 1,
+    }
+    headers = {'Content-Type': 'application/json'}
+    response = requests.post(url, headers=headers, json=payload, verify=False, timeout=1)
+    return response.json()
+
+def set_sequence(sequence):
+    url = robot_url + "/rpc"
+    payload = {
+        "jsonrpc": "2.0",
+        "method": "set_sequence",
+        "params": {
+            "sequence": sequence,
+            },
+        "id": 17,
+    }
+    headers = {'Content-Type': 'application/json'}
+    response = requests.post(url, headers=headers, json=payload, verify=False, timeout=1)
+    return response.json()
+
+def start_sequence(settings):
+    url = robot_url + "/rpc"
+    payload = {
+        "jsonrpc": "2.0",
+        "method": "start_sequence",
+        "params": {
+            "settings": settings,
+        },
+        "id": 18,
+    }
+    headers = {'Content-Type': 'application/json'}
+    response = requests.post(url, headers=headers, json=payload, verify=False, timeout=1)
+    return response.json()
+
+def stop_sequence():
+    url = robot_url + "/rpc"
+    payload = {
+        "jsonrpc": "2.0",
+        "method": "stop_sequence",
+        "id": 19,
     }
     headers = {'Content-Type': 'application/json'}
     response = requests.post(url, headers=headers, json=payload, verify=False, timeout=1)

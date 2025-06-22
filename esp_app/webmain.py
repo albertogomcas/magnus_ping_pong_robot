@@ -94,6 +94,24 @@ def sync_settings(r, settings):
     magnus.set_settings(**settings)
     return status(r)
 
+@jrpc.fn(name="set_sequence")
+def set_sequence(r, sequence):
+    print(f"Got sequence {sequence}")
+    magnus.set_sequence(sequence)
+    return status(r)
+
+@jrpc.fn(name="start_sequence")
+def start_sequence(r, settings):
+    print(f"Got start sequence settings {settings}")
+    magnus.start_sequence(settings)
+    return status(r)
+
+@jrpc.fn(name="stop_sequence")
+def stop_sequence(r):
+    print("Stop sequence")
+    magnus.stop_sequence()
+    return status(r)
+
 @jrpc.fn(name="reset")
 def reset(r):
     machine.reset()
