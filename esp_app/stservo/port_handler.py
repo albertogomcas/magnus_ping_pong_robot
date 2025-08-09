@@ -24,6 +24,7 @@ class PortHandler:
         self.is_using = False
         self.port_name = port_name
         self.ser = None
+        self.lock = asyncio.Lock()
 
     def openPort(self):
         return self.setBaudRate(self.baudrate)
@@ -59,13 +60,15 @@ class PortHandler:
         return self.ser.in_waiting
 
     def readPort(self, length):
-        if (sys.version_info > (3, 0)):
-            return self.ser.read(length)
-        else:
-            return [ord(ch) for ch in self.ser.read(length)]
+        with self.lock:
+            if (sys.version_info > (3, 0)):
+                return self.ser.read(length)
+            else:
+                return [ord(ch) for ch in self.ser.read(length)]
 
     def writePort(self, packet):
-        return self.ser.write(packet)
+        with self.lock:
+            return self.ser.write(packet)
 
     def setPacketTimeout(self, packet_length):
         self.packet_start_time = self.getCurrentTime()

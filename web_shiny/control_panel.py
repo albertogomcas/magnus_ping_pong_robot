@@ -21,8 +21,6 @@ def ui_control():
                 ui.hr(),
                 ui.input_switch("feeder_active", "Continuous Feed", False),
                 ui.input_slider("feed_interval", "Ball Feed Interval (s)", min=1, max=10, value=5, step=0.5),
-                ui.input_slider("shaker_tuning_forward", "Shaker tuning F", min=-100, max=100, value=0, step=1),
-                ui.input_slider("shaker_tuning_reverse", "Shaker tuning R", min=-100, max=100, value=0, step=1),
             )
 
 # Server logic for the Control panel
@@ -62,8 +60,6 @@ def server_control(input, output, session):
             pan=input.pan(),
             tilt=input.tilt(),
             feed_interval=input.feed_interval(),
-            shaker_f=input.shaker_tuning_forward(),
-            shaker_r=input.shaker_tuning_reverse(),
         )
         print(response)  # Output response for debugging
         return ui.notification_show("Settings sent to RoboPong!", type="success", duration=0.25)

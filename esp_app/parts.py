@@ -2,7 +2,6 @@ import time
 
 from machine import Pin, PWM, ADC
 import asyncio
-from servo import Servo
 from dev import DevFlags
 
 
@@ -63,7 +62,7 @@ class Aimer:
 
 class Feeder:
     """Uses a st servo in wheel mode to feed balls into the launcher"""
-    def __init__(self, st_servo, shaker: None):
+    def __init__(self, st_servo, shaker):
         self.st_servo = st_servo
         self.shaker = shaker
         self.active = False
@@ -109,42 +108,25 @@ class Feeder:
 
 
 class Shaker:
-    """Uses a servo to stir balls"""
-    def __init__(self, servo_pin: int):
-        self._pin_no = servo_pin
-        self.servo = Servo(servo_pin)
-        self.stop_ns = 1570000
-        self.reverse_stop_ns = self.stop_ns - 500 * 1e3
-        self.servo.__motor.duty_ns(self.stop_ns)
-        self.move_us = 0
-        self.reverse_move_us = 0
+    """Uses a stservo to stir balls"""
+    def __init__(self, st_servo):
+        self.servo = st_servo
         self.active = False
-        self.forward_cycle = 60 # change direction sometimes
-        self.reverse_cycle = 5
-        self.reverse = False
+        self.swing_angle = 120
+        self.speed = 120
+        self.acceleration = 2
 
 
     async def run(self):
-        last_cycle = time.time()
         while True:
-            await asyncio.sleep(1)
-            if not self.reverse:
-                if time.time() - last_cycle > self.forward_cycle:
-                    self.reverse = True
-                    last_cycle = time.time()
-            else:
-                if time.time() - last_cycle > self.reverse_cycle:
-                    self.reverse = False
-                    last_cycle = time.time()
-
+            await asyncio.sleep(0.1)
             if self.active:
-                if self.reverse:
-                    self.servo.__motor.duty_ns(int(self.stop_ns + self.move_us * 1e3))
-                else:
-                    self.servo.__motor.duty_ns(int(self.reverse_stop_ns - self.reverse_move_us * 1e3))
-            else:
-                self.servo.__motor.duty_ns(self.stop_ns)
-
+                print("back")
+                self.servo.move(self.swing_angle, self.speed, self.acceleration)
+                await asyncio.sleep(2.5*self.swing_angle/self.speed)
+                print("forward")
+                self.servo.move(-self.swing_angle, self.speed, self.acceleration)
+                await asyncio.sleep(2.5*self.swing_angle/self.speed)
 
 
 class ESC:

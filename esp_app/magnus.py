@@ -1,9 +1,5 @@
 from microdot import Microdot, Response
-import machine
 from machine import Pin, UART
-
-import dev
-from ujrpc import JRPCService
 import time
 from parts import Feeder, Launcher, Aimer, Shaker, Detector, Supply
 import asyncio
@@ -34,21 +30,30 @@ class UsedPins:
                 else:
                     all_numbers.append(value)
 
+class ServoNumbers:
+    feeder = 9
+    shaker = 10
+    launcher_v = 3
+    launcher_h = 6
+
 class Magnus:
     def __init__(self):
         self.supply = Supply(UsedPins.ESC_ALIVE)
         self.ST_UART = UART(1, baudrate=1000000, tx=Pin(UsedPins.ST_SERVO_TX), rx=Pin(UsedPins.ST_SERVO_RX))
         self.port_handler = PortHandlerMicroPython(self.ST_UART)
-        self.feeder_servo = STServo(self.port_handler, servo_id=9)
-        self.shaker = Shaker(UsedPins.SHAKER_SERVO)
 
+        self.feeder_servo = STServo(self.port_handler, servo_id=ServoNumbers.feeder)
+        self.vertical_servo = STServo(self.port_handler, servo_id=ServoNumbers.launcher_v)
+        self.horizontal_servo = STServo(self.port_handler, servo_id=ServoNumbers.launcher_h)
+        self.shaker_servo = STServo(self.port_handler, servo_id=ServoNumbers.shaker)
+
+        self.shaker = Shaker(self.shaker_servo)
         self.feeder = Feeder(self.feeder_servo, shaker=self.shaker)
 
         self.launcher = Launcher(UsedPins.LAUNCHER_TOP, UsedPins.LAUNCHER_LEFT, UsedPins.LAUNCHER_RIGHT)
         self.launcher.halt()
         self.detector = Detector(UsedPins.DETECTOR)
-        self.vertical_servo = STServo(self.port_handler, servo_id=3)
-        self.horizontal_servo = STServo(self.port_handler, servo_id=6)
+
         self.aimer = Aimer(self.vertical_servo, self.horizontal_servo)
         self.sequence = []
         self.active_sequence = False
@@ -101,13 +106,6 @@ class Magnus:
         sidespin = math.sin(math.radians(spin_angle)) * spin_strength / 100
 
         self.launcher.configure(speed=speed, topspin=topspin, sidespin=sidespin)
-
-        shaker_tuning_f = settings.get("shaker_f", None)
-        shaker_tuning_r = settings.get("shaker_r", None)
-        if shaker_tuning_f is not None:
-            self.shaker.move_us = shaker_tuning_f
-        if shaker_tuning_r is not None:
-            self.shaker.reverse_move_us = shaker_tuning_r
 
         if settings.get("launcher_active", False):
             self.launcher.activate()

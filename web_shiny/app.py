@@ -96,4 +96,4 @@ app = App(app_ui, server)
 
 if __name__ == "__main__":
     from shiny import run_app
-    run_app('app:app', reload=True, host="10.0.0.168", port=80)
+    run_app('app:app', reload=True, host="0.0.0.0", port=80)

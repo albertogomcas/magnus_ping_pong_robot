@@ -4,6 +4,7 @@ from stservo.stservo_def import *
 
 class STServo:
     """Interface in degrees"""
+
     def __init__(self, ph, servo_id):
         self.ph = ph
         self.servo_id = servo_id
@@ -71,6 +72,7 @@ class STServo:
         comm_result, error = self.sts.Mode(self.servo_id, mode=0)
         if comm_result != COMM_SUCCESS:
             raise Exception(self.sts.getTxRxResult(comm_result))
+
     def set_wheel_mode_closed_loop(self):
         comm_result, error = self.sts.Mode(self.servo_id, mode=1)
         if comm_result != COMM_SUCCESS:
