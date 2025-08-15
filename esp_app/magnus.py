@@ -1,11 +1,14 @@
 from microdot import Microdot, Response
 from machine import Pin, UART
 import time
+
+import dev
 from parts import Feeder, Launcher, Aimer, Shaker, Detector, Supply
 import asyncio
 import math
 from stservo_wrapper import STServo
 from stservo.port_handler import PortHandlerMicroPython
+import random
 
 
 class UsedPins:
@@ -66,7 +69,7 @@ class Magnus:
         time.sleep(3)
         self.launcher.halt()
         self.launcher.set_speed("all", 0)
-        print("Calibrated")
+        print("[Magnus] calibrated")
         time.sleep(1)
 
     async def activate(self):
@@ -117,15 +120,15 @@ class Magnus:
             if self.launcher.active and self.launcher.speed > 0:
                 self.feeder.activate()
         else:
-            print("Launcher is not running, feeder activation prevented")
+            print("[Magnus] launcher is not running, feeder activation prevented")
             self.feeder.halt()
 
     def feed_one(self):
         if self.launcher.active:
-            print("Feeding one")
+            print("[Magnus] feeding one")
             self.feeder.feed_one()
         else:
-            print("Launcher not active, not feeding")
+            print("[Magnus] launcher not active, not feeding")
 
     def set_sequence(self, sequence):
         self.sequence = sequence
@@ -141,20 +144,30 @@ class Magnus:
         self.active_sequence = False
 
     async def run_sequence(self):
-
         while self.active_sequence:
+            print(f"[Magnus] running sequence step {self._sequence_idx + 1}/{len(self.sequence)}")
             self.set_settings(**self.sequence[self._sequence_idx], launcher_active=True, feeder_active=True)
             await self.wait_detector()
-            self._sequence_idx += 1
-            if self._sequence_idx >= len(self.sequence):
-                self._sequence_idx = 0
+            if not self._randomize_sequence:
+                self._sequence_idx += 1
+                if self._sequence_idx >= len(self.sequence):
+                    self._sequence_idx = 0
+            else:
+                self._sequence_idx = random.randint(0, len(self.sequence) - 1)
 
     async def wait_detector(self):
         start = time.time()
         while time.time() - start < 20:
             await asyncio.sleep_ms(100)
-            if self.detector.status()["elapsed"] < 1:
-                break
+            if not dev.DevFlags.simulation_mode:
+                if self.detector.status()["elapsed"] < 1:
+                    print("[Magnus] Detected ball, continuing sequence")
+                    break
+
+            elif self.detector.status()["elapsed"] > 2.15:
+                    print("[Magnus] simulation mode: detected ball")
+                    self.detector._last_pulse = time.time()
+                    break
         else: # no break
-            print("Detector did not finish within 20 seconds, stopping sequence")
+            print("[Magnus] detector did not finish within 20 seconds, stopping sequence")
             self.stop_sequence()

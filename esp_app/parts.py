@@ -28,7 +28,7 @@ class Aimer:
         vangle = min(max(self.vlim_min, vangle), self.vlim_max)
         hangle = min(max(self.hlim_min, hangle), self.hlim_max)
 
-        print(f"Aimer: Aiming to {vangle}V {hangle}H")
+        print(f"[Aimer] aiming to {vangle}V {hangle}H")
         self._shadow = (180 + vangle*self.vgain, 180 + hangle*self.hgain)
 
         if not DevFlags.simulation_mode:
@@ -72,7 +72,7 @@ class Feeder:
 
     def set_ball_interval(self, seconds):
         self.interval = max(0.5, seconds)
-        print(f"Feeder: Ball interval set to {self.interval}s")
+        print(f"[Feeder] ball interval set to {self.interval}s")
 
     async def feed_one(self):
         print("not implemented")
@@ -92,13 +92,13 @@ class Feeder:
                     pass
 
     def activate(self):
-        print("Feeder: Activate")
+        print("[Feeder] Activate")
         self.active = True
         if self.shaker:
             self.shaker.active = True
 
     def halt(self):
-        print("Feeder: Halt")
+        print("[Feeder] Halt")
         self.active = False
         if self.shaker:
             self.shaker.active = False
@@ -112,8 +112,8 @@ class Shaker:
     def __init__(self, st_servo):
         self.servo = st_servo
         self.active = False
-        self.swing_angle = 120
-        self.speed = 120
+        self.swing_angle = 170
+        self.speed = 150
         self.acceleration = 2
 
 
@@ -121,12 +121,21 @@ class Shaker:
         while True:
             await asyncio.sleep(0.1)
             if self.active:
-                print("back")
-                self.servo.move(self.swing_angle, self.speed, self.acceleration)
+                print("[Shaker] moving back")
+                if not DevFlags.simulation_mode:
+                    self.servo.move(self.swing_angle, self.speed, self.acceleration)
                 await asyncio.sleep(2.5*self.swing_angle/self.speed)
-                print("forward")
-                self.servo.move(-self.swing_angle, self.speed, self.acceleration)
+                print("[Shaker] moving forward")
+                if not DevFlags.simulation_mode:
+                    self.servo.move(-self.swing_angle, self.speed, self.acceleration)
                 await asyncio.sleep(2.5*self.swing_angle/self.speed)
+            else:
+                try:
+                    #print("[Shaker] stopping")
+                    if not DevFlags.simulation_mode:
+                        self.servo.move(0, self.speed, self.acceleration)
+                except:
+                    pass
 
 
 class ESC:
@@ -151,7 +160,7 @@ class ESC:
 
     def set_speed(self, speed_pc, force=False):
         if speed_pc > self.limit:
-            print(f"Capping speed to limit {self.limit}")
+            print(f"[ESC] Capping speed to limit {self.limit}")
             speed_pc = self.limit
         if speed_pc <= 0:
             speed_pc = 0
@@ -180,11 +189,12 @@ class Detector:
 
     def handle_detection(self, pin):
         if time.time() - self._last_pulse > self._debounce / 1e3:
-            print("Detected ball!")
+            print("[Detector] detected ball")
             self._last_pulse = time.time()
 
     def status(self):
         return dict(elapsed=time.time() - self._last_pulse)
+
 
 class Launcher:
     """Shoots balls using 3 brushless motors"""
@@ -253,20 +263,20 @@ class Launcher:
         top_speed = top + self._sin30 * (left_speed + right_speed)
 
         if left_speed < self.raw_minimum:
-            print("Warning: settings make left speed stall")
+            print("[Launcher] Warning: settings make left speed stall")
         if right_speed < self.raw_minimum:
-            print("Warning: settings make right speed stall")
+            print("[Launcher] Warning: settings make right speed stall")
         if top_speed < self.raw_minimum:
-            print("Warning: settings make top speed stall")
+            print("[Launcher] Warning: settings make top speed stall")
 
         left_speed = max(left_speed, 0)
         right_speed = max(right_speed, 0)
         top_speed = max(top_speed, 0)
 
-        print(f"Requested speed {base_speed}, (T+L+R)/3 = {(top_speed + right_speed + left_speed) / 3}")
+        print(f"[Launcher] Requested speed {base_speed}, (T+L+R)/3 = {(top_speed + right_speed + left_speed) / 3}")
 
-        print(f"Configuring for speed {speed}, top {topspin}, side {sidespin}")
-        print(f"Top {top_speed:.1f}, Left {left_speed:.1f}, Right {right_speed:.1f}")
+        print(f"[Launcher] Configuring for speed {speed}, top {topspin}, side {sidespin}")
+        print(f"[Launcher] Top {top_speed:.1f}, Left {left_speed:.1f}, Right {right_speed:.1f}")
 
         self.speed = speed
         self.topspin = topspin

@@ -33,7 +33,8 @@ async def main():
 
                 if value:
                     magnus.calibrate()
-                    magnus.feeder_servo.set_wheel_mode_closed_loop()
+                    if not dev.DevFlags.simulation_mode:
+                        magnus.feeder_servo.set_wheel_mode_closed_loop()
                     calibrated = True
                     wait = 0
 
@@ -91,25 +92,25 @@ def calibrate_aim_zero(r):
 
 @jrpc.fn(name="sync_settings")
 def sync_settings(r, settings):
-    print(f"Got settings {settings}")
+    #print(f"Got settings {settings}")
     magnus.set_settings(**settings)
     return status(r)
 
 @jrpc.fn(name="set_sequence")
 def set_sequence(r, sequence):
-    print(f"Got sequence {sequence}")
+    #print(f"Got sequence {sequence}")
     magnus.set_sequence(sequence)
     return status(r)
 
 @jrpc.fn(name="start_sequence")
 def start_sequence(r, settings):
-    print(f"Got start sequence settings {settings}")
-    magnus.start_sequence(settings)
+    #print(f"Got start sequence settings {settings}")
+    magnus.start_sequence(**settings)
     return status(r)
 
 @jrpc.fn(name="stop_sequence")
 def stop_sequence(r):
-    print("Stop sequence")
+    #print("Stop sequence")
     magnus.stop_sequence()
     return status(r)
 
@@ -119,7 +120,7 @@ def reset(r):
 
 @jrpc.fn(name="interrupt")
 def interrupt(r):
-    print(f"interrupting server")
+    print(f"[Webmain] interrupting server")
     esp_app.shutdown()
 
 @jrpc.fn(name="enable_simulation")
