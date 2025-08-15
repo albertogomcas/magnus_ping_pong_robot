@@ -1,5 +1,5 @@
 from shiny import ui, reactive, render
-from common import save_preset_to_file, load_presets_from_file
+from common import save_preset_to_file, load_presets_from_file, delete_preset_from_file
 
 # UI for the Presets panel
 def ui_presets():
