@@ -35,6 +35,13 @@ def load_presets_from_file():
             return json.load(f)
     return {}
 
+def delete_preset_from_file(preset_name):
+    presets = load_presets_from_file()
+    if preset_name in presets:
+        del presets[preset_name]
+        with open('presets.json', 'w') as f:
+            json.dump(presets, f)
+
 # Function to sync settings with the robot
 def sync_settings(feeder_active, launcher_active, speed, spin_angle, spin_strength, pan, tilt, feed_interval):
     url = robot_url + "/rpc"

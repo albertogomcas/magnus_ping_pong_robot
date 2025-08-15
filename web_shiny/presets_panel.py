@@ -6,6 +6,7 @@ def ui_presets():
     return ui.nav_panel("Presets",
                 ui.output_ui("preset_dropdown_ui"),
                 ui.output_ui("preset_ui"),
+                ui.input_action_button("delete_preset", "Delete Preset"),
             )
 
 # Server logic for the Presets panel
@@ -38,6 +39,16 @@ def server_presets(input, output, session):
             ui.update_slider("spin_strength", value=preset["spin_strength"])
             ui.update_slider("pan", value=preset["pan"])
             ui.update_slider("tilt", value=preset["tilt"])
+
+    @reactive.effect
+    @reactive.event(input.delete_preset)
+    def handle_delete_preset():
+        preset_name = input.preset_dropdown()
+        if preset_name:
+            delete_preset_from_file(preset_name)
+            session.preset_list.set(list(load_presets_from_file().keys()))
+            session.preset_summary.set(f"Deleted Preset: {preset_name}")
+            ui.notification_show("Preset deleted!", type="warning", duration=0.25)
 
     # Load presets on startup
     @reactive.Effect
