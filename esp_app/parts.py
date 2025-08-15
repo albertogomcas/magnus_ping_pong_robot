@@ -193,6 +193,12 @@ class Detector:
             self._last_pulse = time.time()
 
     def status(self):
+        if DevFlags.simulation_mode:
+            # In simulation mode, we simulate a detection every 2.15 seconds
+            if time.time() - self._last_pulse > 2.15:
+                self._last_pulse = time.time()
+                print("[Detector] simulated ball detection")
+
         return dict(elapsed=time.time() - self._last_pulse)
 
 

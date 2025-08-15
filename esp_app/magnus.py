@@ -159,15 +159,10 @@ class Magnus:
         start = time.time()
         while time.time() - start < 20:
             await asyncio.sleep_ms(100)
-            if not dev.DevFlags.simulation_mode:
-                if self.detector.status()["elapsed"] < 1:
-                    print("[Magnus] Detected ball, continuing sequence")
-                    break
+            if self.detector.status()["elapsed"] < 0.2:
+                print("[Magnus] Detected ball, continuing sequence")
+                break
 
-            elif self.detector.status()["elapsed"] > 2.15:
-                    print("[Magnus] simulation mode: detected ball")
-                    self.detector._last_pulse = time.time()
-                    break
         else: # no break
             print("[Magnus] detector did not finish within 20 seconds, stopping sequence")
             self.stop_sequence()
