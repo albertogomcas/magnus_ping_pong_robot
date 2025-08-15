@@ -8,12 +8,12 @@ def ui_drill():
         "Drill",
         ui.h3("Drill Runner"),
         ui.p("Select multiple presets to run in sequence:"),
+        ui.input_slider("num_presets", "Number of presets in drill", min=1, max=5, value=1),
         ui.output_ui("drill_presets_ui"),
         ui.input_slider("drill_feed_interval", "Ball Feed Interval (s)", min=1, max=5, value=1, step=0.25),
         ui.input_switch("randomize_order", "Randomize preset order", value=False),
-        ui.input_slider("repetitions", "Number of repetitions", min=1, max=20, value=1, step=1),
         ui.input_task_button("btn_start_drill", "Start Drill"),
-        ui.input_action_button("btn_cancel_drill", "Cancel Drill", class_="btn-danger"),
+        ui.input_action_button("btn_cancel_drill", "Stop Drill", class_="btn-danger"),
     )
 
 # Server logic for the Drill panel
@@ -28,15 +28,18 @@ def server_drill(input, output, session):
         if not presets:
             return ui.p("No presets available. Create some presets first.")
 
-        # Create selectize input for multiple preset selection with repetitions
+        num_presets = input.num_presets()
+
         return ui.div(
-            ui.input_select(
-                "selected_presets",
-                "Select presets for drill:",
-                choices=list(presets.keys()),
-                multiple=True,
-                selectize=True
-            )
+           *[
+                 ui.input_select(
+                     f"selected_preset_{i}",
+                     f"Preset #{i + 1}",
+                     choices=list(presets.keys()),
+                     multiple=False,
+                     selectize=True
+                 ) for i in range(num_presets)
+             ]
         )
 
     # Define the drill task
@@ -44,10 +47,19 @@ def server_drill(input, output, session):
     @reactive.event(input.btn_start_drill)
     def run_drill() -> None:
         presets = load_presets_from_file()
-        selected_preset_names = list(input.selected_presets())
-        selected_presets = [presets[name] for name in selected_preset_names]
+        num_presets = input.num_presets()
+        selected_preset_names = [
+            getattr(input, f"selected_preset_{i}")() for i in range(num_presets)
+        ]
+        selected_presets = [presets[name] for name in selected_preset_names if name]
+        print(selected_presets)
         response = set_sequence(selected_presets)
-        response = start_sequence(settings={"feed_interval":input.drill_feed_interval(), "randomize_order":input.randomize_order()})
+        print(response)
+        response = start_sequence(settings={
+            "feed_interval": input.drill_feed_interval(),
+            "randomize_order": input.randomize_order()
+        })
+        print(response)
 
     # Cancel the drill if the user presses "Cancel"
     @reactive.effect
