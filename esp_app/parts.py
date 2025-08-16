@@ -112,8 +112,8 @@ class Shaker:
     def __init__(self, st_servo):
         self.servo = st_servo
         self.active = False
-        self.swing_angle = 170
-        self.speed = 150
+        self.swing_angle = 130
+        self.speed = 50
         self.acceleration = 2
 
 
@@ -121,19 +121,21 @@ class Shaker:
         while True:
             await asyncio.sleep(0.1)
             if self.active:
-                print("[Shaker] moving back")
-                if not DevFlags.simulation_mode:
-                    self.servo.move(self.swing_angle, self.speed, self.acceleration)
-                await asyncio.sleep(2.5*self.swing_angle/self.speed)
-                print("[Shaker] moving forward")
-                if not DevFlags.simulation_mode:
-                    self.servo.move(-self.swing_angle, self.speed, self.acceleration)
-                await asyncio.sleep(2.5*self.swing_angle/self.speed)
+                if self.active:
+                    print("[Shaker] moving back")
+                    if not DevFlags.simulation_mode:
+                        self.servo.move(180 + self.swing_angle, self.speed, self.acceleration)
+                    await asyncio.sleep(2.5*self.swing_angle/self.speed)
+                if self.active:
+                    print("[Shaker] moving forward")
+                    if not DevFlags.simulation_mode:
+                        self.servo.move(180 - self.swing_angle, self.speed, self.acceleration)
+                    await asyncio.sleep(2.5*self.swing_angle/self.speed)
             else:
                 try:
                     #print("[Shaker] stopping")
                     if not DevFlags.simulation_mode:
-                        self.servo.move(0, self.speed, self.acceleration)
+                        self.servo.move(180, self.speed, self.acceleration)
                 except:
                     pass
 
@@ -184,13 +186,12 @@ class Detector:
         self._pd_pin = pd_pin
         self._pd = Pin(pd_pin, Pin.IN)
         self._last_pulse = 0
-        self._debounce = 25 #ms
+        self._debounce = 1000 #ns
         self._pd.irq(trigger=Pin.IRQ_RISING, handler=self.handle_detection)
 
     def handle_detection(self, pin):
-        if time.time() - self._last_pulse > self._debounce / 1e3:
-            print("[Detector] detected ball")
-            self._last_pulse = time.time()
+        print("[Detector] detected ball")
+        self._last_pulse = time.time()
 
     def status(self):
         if DevFlags.simulation_mode:

@@ -147,6 +147,7 @@ class Magnus:
         while self.active_sequence:
             print(f"[Magnus] running sequence step {self._sequence_idx + 1}/{len(self.sequence)}")
             self.set_settings(**self.sequence[self._sequence_idx], launcher_active=True, feeder_active=True)
+            await asyncio.sleep(0.5)
             await self.wait_detector()
             if not self._randomize_sequence:
                 self._sequence_idx += 1
@@ -157,12 +158,13 @@ class Magnus:
 
     async def wait_detector(self):
         start = time.time()
-        while time.time() - start < 20:
+        while time.time() - start < 30:
             await asyncio.sleep_ms(100)
             if self.detector.status()["elapsed"] < 0.2:
                 print("[Magnus] Detected ball, continuing sequence")
                 break
 
         else: # no break
-            print("[Magnus] detector did not finish within 20 seconds, stopping sequence")
+            print("[Magnus] detector did not finish within 30 seconds, stopping sequence")
             self.stop_sequence()
+            self.halt()
