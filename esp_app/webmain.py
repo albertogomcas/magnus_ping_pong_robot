@@ -61,7 +61,7 @@ async def main():
         raise
 
 jrpc = JRPCService(api_version=1)
-jrpc.debug = True
+jrpc.debug = dev.DevFlags.debug
 Response.default_content_type = 'text/html'
 esp_app = Microdot()
 

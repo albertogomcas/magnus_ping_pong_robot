@@ -5,7 +5,7 @@ from dev import DevFlags
 
 def run():
     asyncio.create_task(main())
-    esp_app.run(port=80, debug=True)
+    esp_app.run(port=80, debug=DevFlags.debug)
 
 program_pin = Pin(19, Pin.IN, Pin.PULL_UP)
 
