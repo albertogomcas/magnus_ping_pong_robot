@@ -1,5 +1,6 @@
 from shiny import ui, reactive, render
 from common import robot_status, sync_settings
+from datetime import datetime
 
 # UI for the Control panel
 def ui_control():
@@ -31,22 +32,36 @@ def server_control(input, output, session):
     def status_ui():
         reactive.invalidate_later(1)  # refresh every 1 second
         status = robot_status()
-        print(status)
         if status["online"]:
             supply_on = status["result"]["supply"]["esc_alive"]
             if supply_on:
                 session.robot_status_text.set("🟢⚡")
             else:
                 session.robot_status_text.set("🟢💤")
-            from datetime import datetime
+
             return ui.div(
                 ui.p(f"{datetime.now().strftime('%H:%M:%S')} Robot is online!"),
             )
         else:
-            print("Offline")
             session.robot_status_text.set("🔴 Offline")
-            from datetime import datetime
             return ui.p(f"{datetime.now().strftime('%H:%M:%S')} RoboPong is offline")
+
+    @reactive.effect
+    def sync_sliders():
+        reactive.invalidate_later(2)  # poll every 2 s
+        if getattr(session, "pause_sync_until", 0) > datetime.now().timestamp():
+            return  # skip syncing for now
+        status = robot_status()
+        if status["online"]:
+            status = status["result"]
+            ui.update_switch("launcher_active", value=status["launcher"]["active"])
+            ui.update_slider("speed", value=status["launcher"]["speed"])
+            ui.update_slider("spin_angle", value=status["launcher"]["spin_angle"])
+            ui.update_slider("spin_strength", value=status["launcher"]["spin_strength"])
+            ui.update_slider("pan", value=status["aim"]["pan"])
+            ui.update_slider("tilt", value=status["aim"]["tilt"])
+            ui.update_switch("feeder_active", value=status["feeder"]["active"])
+            ui.update_slider("feed_interval", value=status["feeder"]["interval"])
 
     # Handle the "Send Settings" button press
     @reactive.Effect
@@ -61,5 +76,5 @@ def server_control(input, output, session):
             tilt=input.tilt(),
             feed_interval=input.feed_interval(),
         )
-        print(response)  # Output response for debugging
+        session.pause_sync_until = datetime.now().timestamp() + 2
         return ui.notification_show("Settings sent to RoboPong!", type="success", duration=0.25)

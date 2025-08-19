@@ -1,6 +1,6 @@
 import time
-
-from machine import Pin, PWM, ADC
+import math
+from machine import Pin, PWM, ADC, UART
 import asyncio
 from dev import DevFlags
 
@@ -59,6 +59,37 @@ class Aimer:
             self.vservo.calibrate_middle()
             self.hservo.calibrate_middle()
         return True
+
+    def up(self):
+        """Move up"""
+        print("[Aimer] Up")
+        st = self.status()
+        self.aim(vangle=st["tilt"] + 1, hangle=st["pan"])
+
+    def down(self):
+        """Move down"""
+        print("[Aimer] Down")
+        st = self.status()
+        self.aim(vangle=st["tilt"] - 1, hangle=st["pan"])
+
+    def middle(self):
+        """Move to middle position"""
+        print("[Aimer] Middle")
+        self.aim(vangle=0, hangle=0)
+
+    def left(self):
+        """Move left"""
+        print("[Aimer] Left")
+        st = self.status()
+        self.aim(vangle=st["tilt"], hangle=st["pan"] - 1)
+
+    def right(self):
+        """Move right"""
+        print("[Aimer] Right")
+        st = self.status()
+        self.aim(vangle=st["tilt"], hangle=st["pan"] + 1)
+
+
 
 class Feeder:
     """Uses a st servo in wheel mode to feed balls into the launcher"""
@@ -178,6 +209,11 @@ class ESC:
     def spin_up(self):
         self.pwm.duty_ns(self._current_pulse)
 
+    def spin_down(self):
+        """Stop the motor"""
+        pulse = int(0 / 100 * (self.max_pulse - self.min_pulse) + self.min_pulse)
+        self.pwm.duty_ns(pulse)
+
     def status(self):
         return f"{self.name}{self.speed:2.0f}"
 
@@ -206,12 +242,13 @@ class Detector:
 class Launcher:
     """Shoots balls using 3 brushless motors"""
 
-    def __init__(self, top, left, right):
+    def __init__(self, top, left, right, feeder=None):
         self._esc = {
             "top": ESC(top, name="T"),
             "left": ESC(left, "L"),
             "right": ESC(right, "R"),
         }
+        self.feeder = feeder
 
         self._cos30 = 0.866
         self._sin30 = 0.5
@@ -239,22 +276,116 @@ class Launcher:
         else:
             self._esc[motor].set_speed(percentage, force)
 
+    def speed_up(self):
+        st = self.status()
+        self.configure(speed=st["speed"]+2,
+                       topspin=st["topspin"],
+                       sidespin=st["sidespin"])
+        self.activate()
+
+    def speed_down(self):
+        st = self.status()
+
+        self.configure(speed=st["speed"]-2,
+                       topspin=st["topspin"],
+                       sidespin=st["sidespin"])
+        self.activate()
+
+
+
+    def increase_spin(self):
+        st = self.status()
+        self.configure(
+            speed=st["speed"],
+            topspin=st["topspin"]*1.1,
+            sidespin=st["sidespin"]*1.1,
+            activate=True,
+        )
+
+    def decrease_spin(self):
+        st = self.status()
+        self.configure(
+            speed=st["speed"],
+            topspin=st["topspin"]/1.1,
+            sidespin=st["sidespin"]/1.1,
+            activate=True,
+        )
+
+    def no_spin(self):
+        """Set no spin"""
+        st = self.status()
+        self.configure(speed=st["speed"], topspin=0, sidespin=0, activate=True)
+
+    def spin_T(self):
+        """Set topspin only"""
+        st = self.status()
+        self.configure(speed=st["speed"], topspin=0.5, sidespin=0, activate=True)
+
+    def spin_B(self):
+        """Set backspin only"""
+        st = self.status()
+        self.configure(speed=st["speed"], topspin=-0.5, sidespin=0, activate=True)
+
+    def spin_L(self):
+        """Set left sidespin only"""
+        st = self.status()
+        self.configure(speed=st["speed"], topspin=0, sidespin=-0.5, activate=True)
+
+    def spin_R(self):
+        """Set right sidespin only"""
+        st = self.status()
+        self.configure(speed=st["speed"], topspin=0, sidespin=0.5, activate=True)
+
+    def spin_TL(self):
+        """Set topspin and left sidespin"""
+        st = self.status()
+        self.configure(speed=st["speed"], topspin=0.5, sidespin=-0.5, activate=True)
+
+    def spin_TR(self):
+        """Set topspin and right sidespin"""
+        st = self.status()
+        self.configure(speed=st["speed"], topspin=0.5, sidespin=0.5, activate=True)
+
+    def spin_BL(self):
+        """Set backspin and left sidespin"""
+        st = self.status()
+        self.configure(speed=st["speed"], topspin=-0.5, sidespin=-0.5, activate=True)
+
+    def spin_BR(self):
+        """Set backspin and right sidespin"""
+        st = self.status()
+        self.configure(speed=st["speed"], topspin=-0.5, sidespin=0.5, activate=True)
+
+    def spin_random(self):
+        """Set random spin"""
+        import random
+        st = self.status()
+        topspin = random.uniform(-1, 1)
+        sidespin = random.uniform(-1, 1)
+        self.configure(speed=st["speed"], topspin=topspin, sidespin=sidespin, activate=True)
+
     def activate(self):
         """Accelerate towards launching speed"""
-        for motor in self._esc.values():
-            motor.spin_up()
-        self.active = True
+        if self.speed > 0:
+            for motor in self._esc.values():
+                motor.spin_up()
+            self.active = True
+        else:
+            print("[Launcher] Cannot activate, speed is 0")
+            self.active = False
 
     def halt(self):
         """Turn off"""
         for motor in self._esc.values():
-            motor.set_speed(0, force=True)
+            motor.spin_down()
         self.active = False
+        if self.feeder:
+            self.feeder.halt()
 
-    def configure(self, speed, topspin, sidespin):
-        assert 0 <= speed <= 100
-        assert -1 <= topspin <= 1
-        assert -1 <= sidespin <= 1
+    def configure(self, speed, topspin, sidespin, activate=False):
+        speed = max(0, min(speed, 100))
+        topspin = max(-1, min(topspin, 1))
+        sidespin = max(-1, min(sidespin, 1))
 
         # base speed is the given setting
         if speed == 0:
@@ -285,6 +416,9 @@ class Launcher:
         print(f"[Launcher] Configuring for speed {speed}, top {topspin}, side {sidespin}")
         print(f"[Launcher] Top {top_speed:.1f}, Left {left_speed:.1f}, Right {right_speed:.1f}")
 
+        if speed == 0:
+            self.feeder.halt()
+
         self.speed = speed
         self.topspin = topspin
         self.sidespin = sidespin
@@ -296,7 +430,12 @@ class Launcher:
         self._esc["left"].set_speed(left_speed)
         self._esc["right"].set_speed(right_speed)
 
+        if activate:
+            self.activate()
+
     def status(self):
+        # topspin = math.cos(math.radians(spin_angle)) * spin_strength / 100
+        # sidespin = math.sin(math.radians(spin_angle)) * spin_strength / 100
         return dict(
             active=self.active,
             speed=self.speed,
@@ -305,6 +444,8 @@ class Launcher:
             left_speed=self.left_speed,
             topspin=self.topspin,
             sidespin=self.sidespin,
+            spin_angle= math.degrees(math.atan2(self.sidespin, self.topspin)) if self.topspin != 0 else 0,
+            spin_strength=math.sqrt(self.topspin**2 + self.sidespin**2) * 100,
         )
 
 
@@ -321,3 +462,70 @@ class Supply():
         return dict(
             esc_alive=self.esc_alive(),
         )
+
+class Remote:
+    def __init__(self, rx_pin):
+        self.rx_pin = Pin(rx_pin, Pin.IN)
+        self.uart = UART(2, rx=self.rx_pin, baudrate=9600, bits=8, parity=None, stop=1)
+
+        self.commands = {
+            "CH-": "BA45FF00",
+            "CH": "B946FF00",
+            "CH+": "B847FF00",
+            "PREV": "BB44FF00",
+            "NEXT": "BF40FF00",
+            "PLAY": "BC43FF00",
+            "VOL-": "F807FF00",
+            "VOL+": "EA15FF00",
+            "EQ": "F609FF00",
+            "0": "E916FF00",
+            "100+": "E619FF00",
+            "200+": "F20DFF00",
+            "1": "F30CFF00",
+            "2": "E718FF00",
+            "3": "A15EFF00",
+            "4": "F708FF00",
+            "5": "E31CFF00",
+            "6": "A55AFF00",
+            "7": "BD42FF00",
+            "8": "AD52FF00",
+            "9": "B54AFF00",
+        }
+
+        self.actions = {}
+
+    def bind(self, ckey, action):
+        """Bind a command key to an action"""
+        if ckey not in self.commands:
+            raise ValueError(f"Command {ckey} not found")
+        self.actions[self.commands[ckey]] = action
+
+    def handle_command(self, command):
+        """Handle a command received from the remote"""
+        if command in self.actions:
+            print(f"[Remote] Executing action for command {command}")
+            self.actions[command]()
+        else:
+            print(f"[Remote] No action bound for command {command}")
+
+    async def run(self):
+        """Run the remote handler"""
+        while True:
+            await asyncio.sleep(0.25)
+            if self.uart.any():
+                command = self.uart.readline().decode().strip()
+                if command == "0":
+                    pass
+                elif command in self.actions:
+                    try:
+                        self.handle_command(command)
+                    except:
+                        print(f"[Remote] Error handling command {command}")
+                else:
+                    if command in self.commands.values():
+                        revdict = {v: k for k, v in self.commands.items()}
+                        command_name = revdict.get(command, "Unknown")
+                        print(f"[Remote] Command {command_name} received but no action bound")
+                    else:
+                        print(f"[Remote] Unknown command: {command}")
+                self.uart.flush()

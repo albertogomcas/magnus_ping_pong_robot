@@ -3,7 +3,7 @@ from machine import Pin, UART
 import time
 
 import dev
-from parts import Feeder, Launcher, Aimer, Shaker, Detector, Supply
+from parts import Feeder, Launcher, Aimer, Shaker, Detector, Supply, Remote
 import asyncio
 import math
 from stservo_wrapper import STServo
@@ -21,6 +21,7 @@ class UsedPins:
     SHAKER_SERVO = 21
     ST_SERVO_TX = 23
     ST_SERVO_RX = 22
+    REMOTE_RX = 27
 
     @classmethod
     def sanity_check(cls):
@@ -53,7 +54,7 @@ class Magnus:
         self.shaker = Shaker(self.shaker_servo)
         self.feeder = Feeder(self.feeder_servo, shaker=self.shaker)
 
-        self.launcher = Launcher(UsedPins.LAUNCHER_TOP, UsedPins.LAUNCHER_LEFT, UsedPins.LAUNCHER_RIGHT)
+        self.launcher = Launcher(UsedPins.LAUNCHER_TOP, UsedPins.LAUNCHER_LEFT, UsedPins.LAUNCHER_RIGHT, feeder=self.feeder)
         self.launcher.halt()
         self.detector = Detector(UsedPins.DETECTOR)
 
@@ -64,6 +65,31 @@ class Magnus:
         self._sequence_idx = 0
         self._sequence_task = None
 
+        self.remote = Remote(UsedPins.REMOTE_RX)
+        self.remote.bind("CH+", self.aimer.up)
+        self.remote.bind("CH-", self.aimer.down)
+        self.remote.bind("CH", self.aimer.middle)
+        self.remote.bind("PREV", self.aimer.left)
+        self.remote.bind("NEXT", self.aimer.right)
+        self.remote.bind("PLAY", self.toggle_activation)
+        self.remote.bind("VOL-", self.launcher.speed_down)
+        self.remote.bind("VOL+", self.launcher.speed_up)
+        self.remote.bind("0", self.launcher.no_spin)
+        self.remote.bind("100+", self.launcher.decrease_spin)
+        self.remote.bind("200+", self.launcher.increase_spin)
+        self.remote.bind("1", self.launcher.spin_TL)
+        self.remote.bind("2", self.launcher.spin_T)
+        self.remote.bind("3", self.launcher.spin_TR)
+        self.remote.bind("4", self.launcher.spin_L)
+        self.remote.bind("5", self.launcher.spin_random)
+        self.remote.bind("6", self.launcher.spin_R)
+        self.remote.bind("7", self.launcher.spin_BL)
+        self.remote.bind("8", self.launcher.spin_B)
+        self.remote.bind("9", self.launcher.spin_BR)
+
+
+
+
     def calibrate(self):
         self.launcher.set_speed("all", 100, force=True)
         time.sleep(3)
@@ -72,13 +98,28 @@ class Magnus:
         print("[Magnus] calibrated")
         time.sleep(1)
 
+    def toggle_activation(self):
+        if self.launcher.active and self.feeder.active:
+            print("[Magnus] deactivating launcher and feeder")
+            self.launcher.halt()
+        elif self.launcher.active and not self.feeder.active:
+            if self.launcher.speed > 0:
+                print("[Magnus] activating feeder")
+                self.feeder.activate()
+        elif (not self.launcher.active) and (not self.feeder.active) and self.launcher.speed > 0:
+            print("[Magnus] activating launcher and feeder")
+            self.launcher.activate()
+            self.feeder.activate()
+        else:
+            print("[Magnus] stop launcher and feeder")
+            self.launcher.halt()
+
     async def activate(self):
         self.launcher.activate()
         self.feeder.activate()
 
     async def halt(self):
         self.launcher.halt()
-        self.feeder.halt()
 
     def status(self):
         status = {
@@ -113,7 +154,6 @@ class Magnus:
         if settings.get("launcher_active", False):
             self.launcher.activate()
         else:
-            self.feeder.halt()
             self.launcher.halt()
 
         if settings.get("feeder_active", False):

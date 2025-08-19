@@ -13,8 +13,8 @@ async def main():
     magnus.halt()
 
     feed_task = asyncio.create_task(magnus.feeder.run())
-
     shaker_task = asyncio.create_task(magnus.shaker.run())
+    remote_task = asyncio.create_task(magnus.remote.run())
 
     offline = False
     calibrated = False

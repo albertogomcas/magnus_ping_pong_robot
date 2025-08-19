@@ -9,18 +9,6 @@ import matplotlib.pyplot as plt
 robot_url = "http://10.0.0.47"
 PRESET_FILE = "presets.json"
 
-def save_current_settings(settings):
-    """Save current settings to a file"""
-    with open("current_settings.json", "w") as f:
-        json.dump(settings, f)
-
-def load_current_settings():
-    """Load current settings from file if it exists"""
-    if os.path.exists("current_settings.json"):
-        with open("current_settings.json", "r") as f:
-            return json.load(f)
-    return None
-
 def save_preset_to_file(name, preset):
     """ Save the preset to a JSON file """
     presets = load_presets_from_file()
@@ -115,7 +103,7 @@ def robot_status():
     }
     headers = {'Content-Type': 'application/json'}
     try:
-        response = requests.post(url, headers=headers, json=payload, verify=False, timeout=0.25)
+        response = requests.post(url, headers=headers, json=payload, verify=False, timeout=1)
         status = response.json()
         status["online"] = True
         return status
