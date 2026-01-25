@@ -51,8 +51,15 @@ def sync_settings(feeder_active, launcher_active, speed, spin_angle, spin_streng
         "id": 1,
     }
     headers = {'Content-Type': 'application/json'}
-    response = requests.post(url, headers=headers, json=payload, verify=False, timeout=1)
-    return response.json()
+    try:
+        response = requests.post(url, headers=headers, json=payload, verify=False, timeout=2)
+        return response.json()
+    except requests.exceptions.Timeout:
+        print(f"Timeout syncing settings to robot")
+        return {"error": "timeout"}
+    except Exception as e:
+        print(f"Error syncing settings: {e}")
+        return {"error": str(e)}
 
 def set_sequence(sequence):
     url = robot_url + "/rpc"
@@ -65,8 +72,12 @@ def set_sequence(sequence):
         "id": 17,
     }
     headers = {'Content-Type': 'application/json'}
-    response = requests.post(url, headers=headers, json=payload, verify=False, timeout=1)
-    return response.json()
+    try:
+        response = requests.post(url, headers=headers, json=payload, verify=False, timeout=2)
+        return response.json()
+    except Exception as e:
+        print(f"Error setting sequence: {e}")
+        return {"error": str(e)}
 
 def start_sequence(settings):
     url = robot_url + "/rpc"
@@ -79,8 +90,12 @@ def start_sequence(settings):
         "id": 18,
     }
     headers = {'Content-Type': 'application/json'}
-    response = requests.post(url, headers=headers, json=payload, verify=False, timeout=1)
-    return response.json()
+    try:
+        response = requests.post(url, headers=headers, json=payload, verify=False, timeout=2)
+        return response.json()
+    except Exception as e:
+        print(f"Error starting sequence: {e}")
+        return {"error": str(e)}
 
 def stop_sequence():
     url = robot_url + "/rpc"
@@ -90,8 +105,12 @@ def stop_sequence():
         "id": 19,
     }
     headers = {'Content-Type': 'application/json'}
-    response = requests.post(url, headers=headers, json=payload, verify=False, timeout=1)
-    return response.json()
+    try:
+        response = requests.post(url, headers=headers, json=payload, verify=False, timeout=2)
+        return response.json()
+    except Exception as e:
+        print(f"Error stopping sequence: {e}")
+        return {"error": str(e)}
 
 # Function to check robot status
 def robot_status():
