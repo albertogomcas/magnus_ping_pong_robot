@@ -3,7 +3,7 @@ from machine import Pin, UART
 import time
 
 import dev
-from parts import Feeder, Launcher, Aimer, Shaker, Detector, Supply, Remote
+from parts import Feeder, Launcher, Aimer, Shaker, Detector, Supply, Remote, ESPNowRemote
 import asyncio
 import math
 from stservo_wrapper import STServo
@@ -21,7 +21,7 @@ class UsedPins:
     SHAKER_SERVO = 21
     ST_SERVO_TX = 23
     ST_SERVO_RX = 22
-    REMOTE_RX = 27
+    # REMOTE_RX = 27  # No longer needed for ESP-NOW remote
 
     @classmethod
     def sanity_check(cls):
@@ -65,27 +65,40 @@ class Magnus:
         self._sequence_idx = 0
         self._sequence_task = None
 
-        self.remote = Remote(UsedPins.REMOTE_RX)
-        self.remote.bind("CH+", self.aimer.up)
-        self.remote.bind("CH-", self.aimer.down)
-        self.remote.bind("CH", self.aimer.middle)
-        self.remote.bind("PREV", self.aimer.left)
-        self.remote.bind("NEXT", self.aimer.right)
-        self.remote.bind("PLAY", self.toggle_activation)
-        self.remote.bind("VOL-", self.launcher.speed_down)
-        self.remote.bind("VOL+", self.launcher.speed_up)
-        self.remote.bind("0", self.launcher.no_spin)
-        self.remote.bind("100+", self.launcher.decrease_spin)
-        self.remote.bind("200+", self.launcher.increase_spin)
-        self.remote.bind("1", self.launcher.spin_TL)
-        self.remote.bind("2", self.launcher.spin_T)
-        self.remote.bind("3", self.launcher.spin_TR)
-        self.remote.bind("4", self.launcher.spin_L)
-        self.remote.bind("5", self.launcher.spin_random)
-        self.remote.bind("6", self.launcher.spin_R)
-        self.remote.bind("7", self.launcher.spin_BL)
-        self.remote.bind("8", self.launcher.spin_B)
-        self.remote.bind("9", self.launcher.spin_BR)
+        self.remote = ESPNowRemote()
+
+        # Bind actions to remote commands
+        # Layer 0 - Control
+        self.remote.bind("aimer_up", self.aimer.up)
+        self.remote.bind("aimer_down", self.aimer.down)
+        self.remote.bind("aimer_center", self.aimer.middle)
+        self.remote.bind("aimer_left", self.aimer.left)
+        self.remote.bind("aimer_right", self.aimer.right)
+        self.remote.bind("toggle_activation", self.toggle_activation)
+        self.remote.bind("feed_one", self.feed_one)
+
+        # Layer 1 - Spin presets
+        self.remote.bind("spin_TL", self.launcher.spin_TL)
+        self.remote.bind("spin_T", self.launcher.spin_T)
+        self.remote.bind("spin_TR", self.launcher.spin_TR)
+        self.remote.bind("spin_L", self.launcher.spin_L)
+        self.remote.bind("spin_R", self.launcher.spin_R)
+        self.remote.bind("spin_BL", self.launcher.spin_BL)
+        self.remote.bind("spin_B", self.launcher.spin_B)
+        self.remote.bind("spin_BR", self.launcher.spin_BR)
+        self.remote.bind("spin_random", self.launcher.spin_random)
+        self.remote.bind("no_spin", self.launcher.no_spin)
+
+        # Layer 2 - Settings
+        self.remote.bind("speed_up", self.launcher.speed_up)
+        self.remote.bind("speed_down", self.launcher.speed_down)
+        self.remote.bind("increase_spin", self.launcher.increase_spin)
+        self.remote.bind("decrease_spin", self.launcher.decrease_spin)
+        self.remote.bind("interval_up", self.interval_up)
+        self.remote.bind("interval_down", self.interval_down)
+
+        # Set status callback for broadcasting to remote
+        self.remote.set_status_callback(self.status)
 
 
 
@@ -97,6 +110,20 @@ class Magnus:
         self.launcher.set_speed("all", 0)
         print("[Magnus] calibrated")
         time.sleep(1)
+
+    def interval_up(self):
+        """Increase feed interval"""
+        current = self.feeder.interval
+        new_interval = min(current + 0.5, 10)
+        self.feeder.set_ball_interval(new_interval)
+        print(f"[Magnus] Interval increased to {new_interval}s")
+
+    def interval_down(self):
+        """Decrease feed interval"""
+        current = self.feeder.interval
+        new_interval = max(current - 0.5, 0.5)
+        self.feeder.set_ball_interval(new_interval)
+        print(f"[Magnus] Interval decreased to {new_interval}s")
 
     def toggle_activation(self):
         if self.launcher.active and self.feeder.active:

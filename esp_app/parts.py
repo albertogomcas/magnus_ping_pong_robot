@@ -3,6 +3,9 @@ import math
 from machine import Pin, PWM, ADC, UART
 import asyncio
 from dev import DevFlags
+import espnow
+import network
+import json
 
 
 class Aimer:
@@ -529,3 +532,103 @@ class Remote:
                     else:
                         print(f"[Remote] Unknown command: {command}")
                 self.uart.flush()
+
+
+class ESPNowRemote:
+    """ESP-NOW based remote control receiver"""
+
+    def __init__(self, sender_mac=None):
+        """
+        Initialize ESP-NOW remote receiver
+        sender_mac: MAC address of remote sender (optional, for filtering)
+        """
+        # Initialize WiFi in station mode (required for ESP-NOW)
+        self.sta = network.WLAN(network.STA_IF)
+        self.sta.active(True)
+
+        # Initialize ESP-NOW
+        self.esp = espnow.ESPNow()
+        self.esp.active(True)
+
+        # Optionally add specific peer
+        self.sender_mac = sender_mac
+        if sender_mac:
+            self.esp.add_peer(sender_mac)
+
+        # Action bindings: action_name -> callable
+        self.actions = {}
+
+        # Status to broadcast
+        self.status_callback = None
+
+        print(f"[ESPNowRemote] Initialized")
+        print(f"[ESPNowRemote] My MAC: {self._mac_to_str(self.sta.config('mac'))}")
+
+    def _mac_to_str(self, mac):
+        """Convert MAC address bytes to string"""
+        return ':'.join(['%02x' % b for b in mac])
+
+    def bind(self, action_name, action_callable):
+        """
+        Bind an action name to a callable
+        action_name: string identifier (e.g., 'aimer_up', 'toggle_activation')
+        action_callable: function to call when action is triggered
+        """
+        self.actions[action_name] = action_callable
+        print(f"[ESPNowRemote] Bound action: {action_name}")
+
+    def set_status_callback(self, callback):
+        """
+        Set callback to get status for broadcasting
+        callback: function that returns status dict
+        """
+        self.status_callback = callback
+
+    def handle_message(self, message):
+        """Handle received message from remote"""
+        msg_type = message.get('type')
+
+        if msg_type == 'key_press':
+            action_name = message.get('action')
+            if action_name in self.actions:
+                try:
+                    print(f"[ESPNowRemote] Executing action: {action_name}")
+                    self.actions[action_name]()
+                except Exception as e:
+                    print(f"[ESPNowRemote] Error executing {action_name}: {e}")
+            else:
+                print(f"[ESPNowRemote] No action bound for: {action_name}")
+
+        elif msg_type == 'status_request':
+            # Send status response
+            self.broadcast_status()
+
+    def broadcast_status(self):
+        """Send status update to remote"""
+        if self.status_callback:
+            try:
+                status = self.status_callback()
+                status['type'] = 'status_response'
+                json_msg = json.dumps(status)
+                # Broadcast to all peers
+                self.esp.send(None, json_msg)
+            except Exception as e:
+                print(f"[ESPNowRemote] Error broadcasting status: {e}")
+
+    async def run(self):
+        """Main receiver loop"""
+        while True:
+            try:
+                # Check for messages (non-blocking)
+                host, msg = self.esp.recv(0)
+                if msg:
+                    try:
+                        message = json.loads(msg)
+                        self.handle_message(message)
+                    except Exception as e:
+                        print(f"[ESPNowRemote] Error parsing message: {e}")
+            except Exception as e:
+                pass
+
+            await asyncio.sleep(0.05)
+

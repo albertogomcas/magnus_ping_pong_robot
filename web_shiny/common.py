@@ -4,10 +4,77 @@ import requests
 import json
 import os
 import matplotlib.pyplot as plt
+from threading import Timer, Lock
 
 # Robot URL
 robot_url = "http://10.0.0.47"
 PRESET_FILE = "presets.json"
+
+class SettingsBatcher:
+    """
+    Batches rapid setting updates to prevent network flooding.
+    When settings change rapidly (e.g., slider dragging), this class
+    debounces the updates and sends only the final values.
+    """
+    def __init__(self, callback, delay=0.3):
+        """
+        Args:
+            callback: Function to call with batched settings
+            delay: Time in seconds to wait before sending (debounce delay)
+        """
+        self._callback = callback
+        self._delay = delay
+        self._pending = {}
+        self._timer = None
+        self._lock = Lock()
+
+    def update(self, **kwargs):
+        """Add settings to the batch. Will be sent after delay period."""
+        with self._lock:
+            self._pending.update(kwargs)
+
+            # Cancel existing timer if one is running
+            if self._timer is not None:
+                self._timer.cancel()
+
+            # Start new timer
+            self._timer = Timer(self._delay, self._flush)
+            self._timer.start()
+
+    def _flush(self):
+        """Send the batched settings."""
+        with self._lock:
+            if self._pending:
+                try:
+                    print(f"Batching: Sending batched settings: {self._pending}")
+                    self._callback(**self._pending)
+                except Exception as e:
+                    print(f"Batching: Error sending settings: {e}")
+                finally:
+                    self._pending.clear()
+                    self._timer = None
+
+    def flush_now(self):
+        """Immediately flush pending settings without waiting for timer."""
+        with self._lock:
+            if self._timer is not None:
+                self._timer.cancel()
+                self._timer = None
+            self._flush()
+
+# Global batcher instance (will be initialized in control panel)
+_settings_batcher = None
+
+def get_settings_batcher():
+    """Get or create the global settings batcher instance."""
+    global _settings_batcher
+    if _settings_batcher is None:
+        _settings_batcher = SettingsBatcher(
+            callback=lambda **kw: sync_settings(**kw),
+            delay=0.3  # 300ms debounce - good balance between responsiveness and efficiency
+        )
+    return _settings_batcher
+
 
 def save_preset_to_file(name, preset):
     """ Save the preset to a JSON file """
