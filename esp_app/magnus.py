@@ -65,7 +65,9 @@ class Magnus:
         self._sequence_idx = 0
         self._sequence_task = None
 
-        self.remote = ESPNowRemote()
+        # Initialize ESP-NOW remote (auto-detects WiFi channel)
+        # Status sending disabled - causes ESP_ERR_ESPNOW_ARG when WiFi is connected
+        self.remote = ESPNowRemote(enable_status_send=False)
 
         # Bind actions to remote commands
         # Layer 0 - Control

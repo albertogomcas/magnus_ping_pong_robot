@@ -22,47 +22,65 @@ class OLEDDisplay:
         """Draw main UI"""
         self.oled.fill(0)
 
-        # Header: Layer name and battery
-        self.oled.text(f"L{layer_num}:{layer_name}", 0, 0)
-        batt_text = f"{battery_voltage:.1f}V"
-        self.oled.text(batt_text, 128 - len(batt_text) * 8, 0)
+        # Yellow band (top 16 pixels): Title only
+        self.oled.text(layer_name, 0, 4)
 
-        # Separator line
-        self.oled.hline(0, 10, 128, 1)
+        # Battery indicator on right side of title
+        self._draw_battery_indicator(battery_voltage, 98, 3)
 
-        # Key grid - 3x4 layout
-        # Display area: y=12 to y=48 (36 pixels for keys)
-        keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '*', '0', '#']
-        cell_width = 42
-        cell_height = 9
+        # Separator line (just below yellow band)
+        self.oled.hline(0, 16, 128, 1)
 
-        for i, key in enumerate(keys):
-            row = i // 3
-            col = i % 3
-            x = col * cell_width
-            y = 12 + row * cell_height
+        # Main content area (white area: y=18 to y=63)
 
-            label = key_labels.get(key, '')
-            # Show key number and label
-            text = f"{key}:{label[:4]}" if label else key
-            self.oled.text(text, x + 2, y)
-
-        # Status line separator
-        self.oled.hline(0, 50, 128, 1)
-
-        # Status info
+        # Launcher status - large and prominent
+        y_pos = 24
         if status.get('launcher_active'):
-            active_text = "ON"
+            self.oled.text("STATUS: ACTIVE", 0, y_pos)
         else:
-            active_text = "OFF"
+            self.oled.text("STATUS: STANDBY", 0, y_pos)
 
+        # Speed setting
+        y_pos += 12
         speed = status.get('speed', 0)
-        spin_angle = status.get('spin_angle', 0)
+        self.oled.text(f"Speed: {speed:.0f}%", 0, y_pos)
 
-        status_text = f"{active_text} S:{speed:.0f} A:{spin_angle:.0f}"
-        self.oled.text(status_text, 0, 54)
+        # Spin angle setting
+        y_pos += 12
+        spin_angle = status.get('spin_angle', 0)
+        self.oled.text(f"Spin Angle: {spin_angle:.0f}", 0, y_pos)
 
         self.oled.show()
+
+    def _draw_battery_indicator(self, voltage, x, y):
+        """Draw battery level indicator with bars"""
+        # Battery outline (24x10 pixels)
+        width = 24
+        height = 10
+
+        # Draw battery body rectangle
+        self.oled.rect(x, y, width, height, 1)
+
+        # Draw battery terminal (small nub on right)
+        self.oled.fill_rect(x + width, y + 3, 2, 4, 1)
+
+        # Calculate battery level (3.0V = empty, 4.2V = full)
+        min_voltage = 3.0
+        max_voltage = 4.2
+        level = (voltage - min_voltage) / (max_voltage - min_voltage)
+        level = max(0, min(1, level))  # Clamp between 0 and 1
+
+        # Draw bars (5 bars max, each 3 pixels wide with 1 pixel spacing)
+        num_bars = 5
+        bar_width = 3
+        bar_spacing = 1
+        filled_bars = int(level * num_bars + 0.5)
+
+        for i in range(filled_bars):
+            bar_x = x + 2 + i * (bar_width + bar_spacing)
+            bar_y = y + 2
+            bar_h = height - 4
+            self.oled.fill_rect(bar_x, bar_y, bar_width, bar_h, 1)
 
     def flash_key(self, key):
         """Visual feedback for key press (can be enhanced)"""
@@ -72,13 +90,8 @@ class OLEDDisplay:
     def show_message(self, message):
         """Show a centered message"""
         self.oled.fill(0)
+        # Center message in main area (below yellow band)
         x = (128 - len(message) * 8) // 2
-        y = 28
+        y = 32
         self.oled.text(message, x, y)
-        self.oled.show()
-
-    def show_battery_warning(self):
-        """Show low battery warning"""
-        # Add small indicator in corner
-        self.oled.text("!", 120, 54)
         self.oled.show()

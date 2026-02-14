@@ -3,7 +3,7 @@ ESP-NOW Remote Control for RoboPong
 Main controller for battery-powered remote with 3x4 keypad and OLED display
 """
 import time
-from machine import Pin, I2C, ADC, deepsleep
+from machine import Pin, I2C, ADC
 import asyncio
 
 from keypad import Keypad
@@ -11,28 +11,38 @@ from oled_display import OLEDDisplay
 from espnow_sender import ESPNowSender
 
 # Configuration
-RECEIVER_MAC = b'\xff\xff\xff\xff\xff\xff'  # TODO: Replace with actual receiver MAC address
-INACTIVITY_TIMEOUT = 60  # seconds before sleep
+RECEIVER_MAC = b'\xb0\xa7\x32\x32\x73\x1c'  # TODO: Replace with actual receiver MAC address
 LOW_BATTERY_THRESHOLD = 3.3  # volts
 
 class RemoteController:
     def __init__(self):
         # Initialize components
+        # ESP32-C6 Keypad physical pin order: Col2, Row1, Col1, Row4, Col3, Row3, Row2
+        # Wiring for easy connection (consecutive pins):
+        #   Pad 1 (Col2) → GPIO 7
+        #   Pad 2 (Row1) → GPIO 2
+        #   Pad 3 (Col1) → GPIO 6
+        #   Pad 4 (Row4) → GPIO 5
+        #   Pad 5 (Col3) → GPIO 8
+        #   Pad 6 (Row3) → GPIO 4
+        #   Pad 7 (Row2) → GPIO 3
         self.keypad = Keypad(
-            row_pins=[15, 2, 0],     # GPIO pins for rows
-            col_pins=[4, 16, 17, 5]  # GPIO pins for columns
+            row_pins=[2, 3, 4, 5],       # GPIO for Row1, Row2, Row3, Row4 (consecutive)
+            col_pins=[6, 7, 8]           # GPIO for Col1, Col2, Col3 (consecutive)
         )
 
         # I2C for OLED (using different pins than ST servo on main controller)
         self.i2c = I2C(0, scl=Pin(22), sda=Pin(21), freq=400000)
         self.display = OLEDDisplay(self.i2c)
 
-        # ESP-NOW sender
-        self.sender = ESPNowSender(RECEIVER_MAC)
+        # ESP-NOW sender - channel MUST match receiver's WiFi channel
+        # Check receiver's startup output for: "[ESPNowRemote] WiFi already connected on channel X"
+        # Common channels: 1, 6, 11 (most WiFi routers use these)
+        self.sender = ESPNowSender(RECEIVER_MAC, channel=10)
 
-        # Battery monitoring
-        self.battery_adc = ADC(Pin(35))
-        self.battery_adc.atten(ADC.ATTN_11DB)  # 0-3.6V range
+        # Battery monitoring (ESP32-C6: ADC on GPIO 0)
+        self.battery_adc = ADC(Pin(0))
+        self.battery_adc.atten(ADC.ATTN_11DB)  # Full range
 
         # State
         self.current_layer = 0
@@ -65,12 +75,12 @@ class RemoteController:
                 '2': 'spin_T',
                 '3': 'spin_TR',
                 '4': 'spin_L',
-                '5': 'spin_random',
+                '5': 'no_spin',
                 '6': 'spin_R',
                 '7': 'spin_BL',
                 '8': 'spin_B',
                 '9': 'spin_BR',
-                '0': 'no_spin',
+                '0': 'feed_one',
                 '*': 'layer_switch',
                 '#': 'toggle_activation',
             },
@@ -81,15 +91,16 @@ class RemoteController:
                 '6': 'increase_spin',
                 '7': 'interval_up',
                 '9': 'interval_down',
+                '0': 'feed_one',
                 '*': 'layer_switch',
                 '#': 'toggle_activation',
             },
         }
 
         self.layer_names = {
-            0: 'CONTROL',
+            0: 'AIM',
             1: 'SPIN',
-            2: 'SETTINGS',
+            2: 'SPEED',
         }
 
     def get_battery_voltage(self):
@@ -113,7 +124,6 @@ class RemoteController:
     def handle_key(self, key):
         """Handle keypress"""
         print(f"[Remote] Key pressed: {key}")
-        self.last_activity = time.time()
 
         # Get action for this key in current layer
         action = self.layers[self.current_layer].get(key)
@@ -175,7 +185,6 @@ class RemoteController:
             'spin_BL': '↙',
             'spin_B': 'BACK',
             'spin_BR': '↘',
-            'spin_random': 'RND',
             'no_spin': 'NONE',
             'speed_up': 'SPD+',
             'speed_down': 'SPD-',
@@ -194,16 +203,6 @@ class RemoteController:
 
         return labels
 
-    def check_inactivity(self):
-        """Check if should enter deep sleep"""
-        if time.time() - self.last_activity > INACTIVITY_TIMEOUT:
-            print("[Remote] Inactivity timeout, entering deep sleep")
-            self.display.clear()
-            self.display.show_message("Sleeping...")
-            time.sleep(0.5)
-            # Configure wake on any keypad pin
-            # deepsleep will wake on GPIO activity
-            deepsleep()
 
     async def request_status(self):
         """Request status update from receiver"""
@@ -237,12 +236,6 @@ class RemoteController:
                 # Debounce
                 await asyncio.sleep(0.2)
 
-            # Check inactivity
-            self.check_inactivity()
-
-            # Check battery
-            if self.check_battery():
-                self.display.show_battery_warning()
 
             await asyncio.sleep(0.05)
 
@@ -261,6 +254,159 @@ class RemoteController:
         await asyncio.gather(keypad_task, status_update_task, status_receiver_task)
 
 
+def test_keypad():
+    """Test keypad by displaying pressed keys on OLED"""
+    print("[Test] Keypad Test - Press keys to see them on display")
+    print("[Test] Press * three times to exit")
+
+    # Initialize components
+    keypad = Keypad(
+        row_pins=[2, 3, 4, 5],
+        col_pins=[6, 7, 8]
+    )
+
+    i2c = I2C(0, scl=Pin(22), sda=Pin(21), freq=400000)
+    display = OLEDDisplay(i2c)
+
+    # Show initial message
+    display.oled.fill(0)
+    display.oled.text("Keypad Test", 20, 0)
+    display.oled.text("Press any key", 12, 20)
+    display.oled.text("* x3 to exit", 16, 40)
+    display.oled.show()
+
+    star_count = 0
+    last_keys = []  # Keep history of last 5 keys
+
+    while star_count < 3:
+        key = keypad.scan()
+        if key:
+            print(f"[Test] Key pressed: {key}")
+
+            # Count consecutive star presses for exit
+            if key == '*':
+                star_count += 1
+            else:
+                star_count = 0
+
+            # Add to history
+            last_keys.append(key)
+            if len(last_keys) > 5:
+                last_keys.pop(0)
+
+            # Display the pressed key
+            display.oled.fill(0)
+            display.oled.text("Keypad Test", 20, 0)
+            display.oled.hline(0, 12, 128, 1)
+
+            # Show current key (large)
+            display.oled.text(f"Key: {key}", 40, 20)
+
+            # Show key history
+            display.oled.text("History:", 0, 40)
+            history_str = ' '.join(last_keys)
+            display.oled.text(history_str, 0, 52)
+
+            display.oled.show()
+
+            # Debounce delay
+            time.sleep(0.3)
+
+    # Exit message
+    display.oled.fill(0)
+    display.oled.text("Test Complete!", 16, 28)
+    display.oled.show()
+    time.sleep(1)
+    display.clear()
+    print("[Test] Keypad test complete!")
+
+
+def demo_display():
+    """Demo code to test OLED display - comment out when not needed"""
+    print("[Demo] Testing OLED Display")
+
+    # Initialize I2C and display
+    i2c = I2C(0, scl=Pin(22), sda=Pin(21), freq=400000)
+    display = OLEDDisplay(i2c)
+
+    # Test 1: Show welcome message
+    print("[Demo] Test 1: Welcome message")
+    display.show_message("RoboPong!")
+    time.sleep(2)
+
+    # Test 2: Draw full UI for each layer
+    layers = ['AIM', 'SPIN', 'SPEED']
+
+    # Sample key labels for each layer
+    layer_labels = [
+        # Layer 0: Control
+        {'1': '', '2': '↑', '3': '', '4': '←', '5': '⊙', '6': '→',
+         '7': '', '8': '↓', '9': '', '*': 'LAYR', '0': 'FEED', '#': 'STRT'},
+        # Layer 1: Spin
+        {'1': '↖', '2': 'TOP', '3': '↗', '4': 'LEFT', '5': 'RND', '6': 'RGHT',
+         '7': '↙', '8': 'BACK', '9': '↘', '*': 'LAYR', '0': 'NONE', '#': 'STRT'},
+        # Layer 2: Settings
+        {'1': 'SPD+', '2': '', '3': 'SPD-', '4': 'SPN-', '5': '', '6': 'SPN+',
+         '7': 'INT+', '8': '', '9': 'INT-', '*': 'LAYR', '0': 'FEED', '#': 'STRT'},
+    ]
+
+    status = {
+        'launcher_active': False,
+        'speed': 50,
+        'spin_angle': 45,
+    }
+
+    for i, layer_name in enumerate(layers):
+        print(f"[Demo] Test {i+1}: Layer {i} - {layer_name}")
+        display.draw_ui(
+            layer_name=layer_name,
+            layer_num=i,
+            key_labels=layer_labels[i],
+            status=status,
+            battery_voltage=3.7,
+        )
+        time.sleep(3)
+
+        # Toggle launcher active for second iteration
+        if i == 1:
+            status['launcher_active'] = True
+            print(f"[Demo] Test {i+1}b: Layer {i} with launcher ON")
+            display.draw_ui(
+                layer_name=layer_name,
+                layer_num=i,
+                key_labels=layer_labels[i],
+                status=status,
+                battery_voltage=3.7,
+            )
+            time.sleep(3)
+
+    # Test: Low battery indicator (shows fewer bars)
+    print("[Demo] Test: Low battery indicator")
+    display.draw_ui(
+        layer_name='AIM',
+        layer_num=0,
+        key_labels=layer_labels[0],
+        status={'launcher_active': False, 'speed': 30, 'spin_angle': 0},
+        battery_voltage=3.2,
+    )
+    time.sleep(3)
+
+    # Test: Full battery indicator
+    print("[Demo] Test: Full battery indicator")
+    display.draw_ui(
+        layer_name='AIM',
+        layer_num=0,
+        key_labels=layer_labels[0],
+        status={'launcher_active': False, 'speed': 30, 'spin_angle': 0},
+        battery_voltage=4.1,
+    )
+    time.sleep(3)
+
+    # Clear and finish
+    display.clear()
+    print("[Demo] Display test complete!")
+
+
 def main():
     """Entry point"""
     print("[Remote] RoboPong Remote Control")
@@ -275,4 +421,13 @@ def main():
         sys.print_exception(e)
 
 if __name__ == '__main__':
+    # Uncomment ONE of the following to test:
+
+    # Test keypad (shows pressed keys on display):
+    #test_keypad()
+
+    # Test display only:
+    #demo_display()
+
+    # Run main remote controller:
     main()

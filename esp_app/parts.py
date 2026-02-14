@@ -223,14 +223,20 @@ class ESC:
 class Detector:
     def __init__(self, pd_pin):
         self._pd_pin = pd_pin
-        self._pd = Pin(pd_pin, Pin.IN)
+        # Add pull-down resistor to prevent floating state
+        self._pd = Pin(pd_pin, Pin.IN, Pin.PULL_DOWN)
         self._last_pulse = 0
-        self._debounce = 1000 #ns
+        # 150ms debounce (since ball passage < 100ms, this filters noise)
+        self._debounce = 0.15
         self._pd.irq(trigger=Pin.IRQ_RISING, handler=self.handle_detection)
 
     def handle_detection(self, pin):
-        print("[Detector] detected ball")
-        self._last_pulse = time.time()
+        current_time = time.time()
+        # Only register detection if enough time has passed since last one
+        if current_time - self._last_pulse > self._debounce:
+            print("[Detector] detected ball")
+            self._last_pulse = current_time
+        # else: ignore spurious trigger
 
     def status(self):
         if DevFlags.simulation_mode:
@@ -537,14 +543,34 @@ class Remote:
 class ESPNowRemote:
     """ESP-NOW based remote control receiver"""
 
-    def __init__(self, sender_mac=None):
+    def __init__(self, sender_mac=None, channel=None, enable_status_send=False):
         """
         Initialize ESP-NOW remote receiver
         sender_mac: MAC address of remote sender (optional, for filtering)
+        channel: WiFi channel (1-13, optional) - if None, uses current WiFi channel
+        enable_status_send: Enable sending status back to remote (may not work with WiFi connected)
         """
-        # Initialize WiFi in station mode (required for ESP-NOW)
+        # Get existing WiFi interface (already initialized in boot.py)
         self.sta = network.WLAN(network.STA_IF)
-        self.sta.active(True)
+
+        # If WiFi is already active and connected, get its channel
+        if self.sta.active() and self.sta.isconnected():
+            current_channel = self.sta.config('channel')
+            print(f"[ESPNowRemote] WiFi already connected on channel {current_channel}")
+            if channel is not None and channel != current_channel:
+                print(f"[ESPNowRemote] WARNING: Requested channel {channel} but WiFi is on {current_channel}")
+                print(f"[ESPNowRemote] Using WiFi channel {current_channel} for ESP-NOW")
+            self.wifi_connected = True
+        else:
+            # WiFi not connected, we can set the channel
+            self.sta.active(True)
+            if channel is not None:
+                self.sta.config(channel=channel)
+                print(f"[ESPNowRemote] WiFi channel set to {channel}")
+            else:
+                channel = self.sta.config('channel')
+                print(f"[ESPNowRemote] Using default WiFi channel {channel}")
+            self.wifi_connected = False
 
         # Initialize ESP-NOW
         self.esp = espnow.ESPNow()
@@ -554,6 +580,7 @@ class ESPNowRemote:
         self.sender_mac = sender_mac
         if sender_mac:
             self.esp.add_peer(sender_mac)
+            print(f"[ESPNowRemote] Added sender as peer: {self._mac_to_str(sender_mac)}")
 
         # Action bindings: action_name -> callable
         self.actions = {}
@@ -561,7 +588,18 @@ class ESPNowRemote:
         # Status to broadcast
         self.status_callback = None
 
-        print(f"[ESPNowRemote] Initialized")
+        # Track known peers for auto-adding
+        self.known_peers = []
+
+        # Track last sender for status replies
+        self.last_sender = None
+
+        # Control whether to send status back (problematic with WiFi connected)
+        self.enable_status_send = enable_status_send
+        if self.wifi_connected and enable_status_send:
+            print(f"[ESPNowRemote] WARNING: Status sending enabled with WiFi connected - may cause errors")
+
+        print(f"[ESPNowRemote] Initialized (status_send={'enabled' if enable_status_send else 'disabled'})")
         print(f"[ESPNowRemote] My MAC: {self._mac_to_str(self.sta.config('mac'))}")
 
     def _mac_to_str(self, mac):
@@ -584,7 +622,7 @@ class ESPNowRemote:
         """
         self.status_callback = callback
 
-    def handle_message(self, message):
+    def handle_message(self, message, sender=None):
         """Handle received message from remote"""
         msg_type = message.get('type')
 
@@ -600,35 +638,111 @@ class ESPNowRemote:
                 print(f"[ESPNowRemote] No action bound for: {action_name}")
 
         elif msg_type == 'status_request':
-            # Send status response
-            self.broadcast_status()
+            # Send status response to specific sender
+            if sender:
+                self.send_status_to(sender)
+            else:
+                self.broadcast_status()
 
-    def broadcast_status(self):
-        """Send status update to remote"""
+    def send_status_to(self, peer_mac):
+        """Send status update to specific peer"""
+        # Check if status sending is enabled
+        if not self.enable_status_send:
+            return  # Silently skip if disabled
+
+        # Verify peer is in known list before attempting to send
+        if peer_mac not in self.known_peers:
+            print(f"[ESPNowRemote] ERROR: Peer {self._mac_to_str(peer_mac)} not in known_peers list!")
+            print(f"[ESPNowRemote] Known peers: {[self._mac_to_str(p) for p in self.known_peers]}")
+            # Try to add it now
+            try:
+                self.esp.add_peer(peer_mac)
+                self.known_peers.append(peer_mac)
+                print(f"[ESPNowRemote] Emergency add peer succeeded: {self._mac_to_str(peer_mac)}")
+            except Exception as e:
+                print(f"[ESPNowRemote] Emergency add peer failed: {e}, skipping status send")
+                return
+
         if self.status_callback:
             try:
                 status = self.status_callback()
                 status['type'] = 'status_response'
                 json_msg = json.dumps(status)
-                # Broadcast to all peers
-                self.esp.send(None, json_msg)
+
+                # Debug: show what we're trying to send
+                print(f"[ESPNowRemote] Attempting send to {self._mac_to_str(peer_mac)}, msg length: {len(json_msg)}")
+
+                # Send to specific peer
+                self.esp.send(peer_mac, json_msg)
+                print(f"[ESPNowRemote] ✓ Sent status successfully")
             except Exception as e:
-                print(f"[ESPNowRemote] Error broadcasting status: {e}")
+                print(f"[ESPNowRemote] ✗ Error sending status: {e}")
+                print(f"[ESPNowRemote] Peer MAC type: {type(peer_mac)}, value: {peer_mac}")
+
+    def broadcast_status(self):
+        """Send status update to all known remotes"""
+        # Check if status sending is enabled
+        if not self.enable_status_send:
+            return  # Silently skip if disabled
+
+        if self.status_callback:
+            try:
+                status = self.status_callback()
+                status['type'] = 'status_response'
+                json_msg = json.dumps(status)
+                # Send to each known peer individually (broadcast to None doesn't work with WiFi connected)
+                for peer in self.known_peers:
+                    try:
+                        self.esp.send(peer, json_msg)
+                    except Exception as e:
+                        print(f"[ESPNowRemote] Error sending to {self._mac_to_str(peer)}: {e}")
+            except Exception as e:
+                print(f"[ESPNowRemote] Error preparing status: {e}")
 
     async def run(self):
         """Main receiver loop"""
+        print("[ESPNowRemote] Starting receiver loop...")
+        msg_count = 0
+
         while True:
             try:
-                # Check for messages (non-blocking)
-                host, msg = self.esp.recv(0)
-                if msg:
+                # Check for messages with 100ms timeout (was 0 = non-blocking)
+                host, msg = self.esp.recv(100)
+                if host and msg:
+                    msg_count += 1
+                    print(f"[ESPNowRemote] Received message #{msg_count} from {self._mac_to_str(host)}")
+
+                    # Track last sender for status updates
+                    self.last_sender = host
+
+                    # Auto-add sender as peer if not already added (for bidirectional communication)
+                    if host not in self.known_peers:
+                        try:
+                            # Add peer for bidirectional communication
+                            # Note: MicroPython ESPNow.add_peer() may need just the MAC
+                            self.esp.add_peer(host)
+                            self.known_peers.append(host)
+                            print(f"[ESPNowRemote] Auto-added sender as peer: {self._mac_to_str(host)}")
+                        except Exception as e:
+                            # Peer might already exist, that's okay
+                            err_str = str(e).lower()
+                            if "already exists" in err_str or "exist" in err_str or "esp_err_espnow_exist" in err_str:
+                                # Peer exists, add to known list anyway
+                                self.known_peers.append(host)
+                                print(f"[ESPNowRemote] Peer already exists, added to known list: {self._mac_to_str(host)}")
+                            else:
+                                print(f"[ESPNowRemote] ERROR adding peer {self._mac_to_str(host)}: {e}")
+                                # Don't add to known_peers if add failed
+
                     try:
                         message = json.loads(msg)
-                        self.handle_message(message)
+                        self.handle_message(message, sender=host)
                     except Exception as e:
                         print(f"[ESPNowRemote] Error parsing message: {e}")
             except Exception as e:
-                pass
+                # Don't spam timeout errors
+                if "ETIMEDOUT" not in str(e):
+                    print(f"[ESPNowRemote] Receive error: {e}")
 
             await asyncio.sleep(0.05)
 

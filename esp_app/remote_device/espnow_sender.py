@@ -7,14 +7,19 @@ import json
 
 
 class ESPNowSender:
-    def __init__(self, receiver_mac):
+    def __init__(self, receiver_mac, channel=1):
         """
         Initialize ESP-NOW sender
         receiver_mac: MAC address of receiver as bytes (e.g., b'\xaa\xbb\xcc\xdd\xee\xff')
+        channel: WiFi channel (1-13, default 1) - must match receiver
         """
         # Initialize WiFi in station mode (required for ESP-NOW)
         self.sta = network.WLAN(network.STA_IF)
         self.sta.active(True)
+
+        # Set WiFi channel (critical for ESP-NOW communication)
+        self.sta.config(channel=channel)
+        print(f"[ESPNow] WiFi channel set to {channel}")
 
         # Initialize ESP-NOW
         self.esp = espnow.ESPNow()
@@ -39,6 +44,7 @@ class ESPNowSender:
         try:
             json_msg = json.dumps(message)
             self.esp.send(self.receiver_mac, json_msg)
+            print(f"[ESPNow] Sent: {json_msg[:50]}...")  # Show first 50 chars
             return True
         except Exception as e:
             print(f"[ESPNow] Send error: {e}")
