@@ -66,8 +66,8 @@ class Magnus:
         self._sequence_task = None
 
         # Initialize ESP-NOW remote (auto-detects WiFi channel)
-        # Status sending disabled - causes ESP_ERR_ESPNOW_ARG when WiFi is connected
-        self.remote = ESPNowRemote(enable_status_send=False)
+        # Status sending now enabled - fixed to add peers with channel parameter
+        self.remote = ESPNowRemote(enable_status_send=True)
 
         # Bind actions to remote commands
         # Layer 0 - Control
@@ -100,7 +100,8 @@ class Magnus:
         self.remote.bind("interval_down", self.interval_down)
 
         # Set status callback for broadcasting to remote
-        self.remote.set_status_callback(self.status)
+        # Use remote_status() which returns a flat structure suitable for OLED display
+        self.remote.set_status_callback(self.remote_status)
 
 
 
@@ -128,6 +129,11 @@ class Magnus:
         print(f"[Magnus] Interval decreased to {new_interval}s")
 
     def toggle_activation(self):
+        # If speed is 0, set a default speed before activating
+        if self.launcher.speed == 0:
+            print("[Magnus] Speed is 0, setting default speed to 50")
+            self.launcher.configure(speed=50, topspin=0, sidespin=0, activate=False)
+
         if self.launcher.active and self.feeder.active:
             print("[Magnus] deactivating launcher and feeder")
             self.launcher.halt()
@@ -160,6 +166,24 @@ class Magnus:
             "sequence": self.active_sequence,
         }
         return status
+
+    def remote_status(self):
+        """Return flattened status for remote OLED display"""
+        launcher = self.launcher.status()
+        aim = self.aimer.status()
+        feeder = self.feeder.status()
+
+        return {
+            'launcher_active': launcher['active'],
+            'speed': int(launcher['speed']),
+            'topspin': launcher['topspin'],
+            'sidespin': launcher['sidespin'],
+            'spin_angle': int(launcher['spin_angle']),
+            'spin_strength': int(launcher['spin_strength']),
+            'tilt': aim['tilt'],
+            'pan': aim['pan'],
+            'interval': feeder['interval'],
+        }
 
     def set_settings(self, **settings):
         interval = settings.get("feed_interval", None)

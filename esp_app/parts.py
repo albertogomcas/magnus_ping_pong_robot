@@ -445,6 +445,13 @@ class Launcher:
     def status(self):
         # topspin = math.cos(math.radians(spin_angle)) * spin_strength / 100
         # sidespin = math.sin(math.radians(spin_angle)) * spin_strength / 100
+
+        # Calculate spin_angle: only if there's any spin (topspin OR sidespin)
+        if self.topspin != 0 or self.sidespin != 0:
+            spin_angle = math.degrees(math.atan2(self.sidespin, self.topspin))
+        else:
+            spin_angle = 0
+
         return dict(
             active=self.active,
             speed=self.speed,
@@ -453,7 +460,7 @@ class Launcher:
             left_speed=self.left_speed,
             topspin=self.topspin,
             sidespin=self.sidespin,
-            spin_angle= math.degrees(math.atan2(self.sidespin, self.topspin)) if self.topspin != 0 else 0,
+            spin_angle=spin_angle,
             spin_strength=math.sqrt(self.topspin**2 + self.sidespin**2) * 100,
         )
 
@@ -579,8 +586,13 @@ class ESPNowRemote:
         # Optionally add specific peer
         self.sender_mac = sender_mac
         if sender_mac:
-            self.esp.add_peer(sender_mac)
-            print(f"[ESPNowRemote] Added sender as peer: {self._mac_to_str(sender_mac)}")
+            if self.wifi_connected:
+                channel = self.sta.config('channel')
+                self.esp.add_peer(sender_mac, channel=channel)
+                print(f"[ESPNowRemote] Added sender as peer on channel {channel}: {self._mac_to_str(sender_mac)}")
+            else:
+                self.esp.add_peer(sender_mac)
+                print(f"[ESPNowRemote] Added sender as peer: {self._mac_to_str(sender_mac)}")
 
         # Action bindings: action_name -> callable
         self.actions = {}
@@ -656,9 +668,14 @@ class ESPNowRemote:
             print(f"[ESPNowRemote] Known peers: {[self._mac_to_str(p) for p in self.known_peers]}")
             # Try to add it now
             try:
-                self.esp.add_peer(peer_mac)
+                if self.wifi_connected:
+                    channel = self.sta.config('channel')
+                    self.esp.add_peer(peer_mac, channel=channel)
+                    print(f"[ESPNowRemote] Emergency add peer succeeded on channel {channel}: {self._mac_to_str(peer_mac)}")
+                else:
+                    self.esp.add_peer(peer_mac)
+                    print(f"[ESPNowRemote] Emergency add peer succeeded: {self._mac_to_str(peer_mac)}")
                 self.known_peers.append(peer_mac)
-                print(f"[ESPNowRemote] Emergency add peer succeeded: {self._mac_to_str(peer_mac)}")
             except Exception as e:
                 print(f"[ESPNowRemote] Emergency add peer failed: {e}, skipping status send")
                 return
@@ -719,10 +736,15 @@ class ESPNowRemote:
                     if host not in self.known_peers:
                         try:
                             # Add peer for bidirectional communication
-                            # Note: MicroPython ESPNow.add_peer() may need just the MAC
-                            self.esp.add_peer(host)
+                            # When WiFi is connected, must specify channel parameter
+                            if self.wifi_connected:
+                                channel = self.sta.config('channel')
+                                self.esp.add_peer(host, channel=channel)
+                                print(f"[ESPNowRemote] Auto-added sender as peer on channel {channel}: {self._mac_to_str(host)}")
+                            else:
+                                self.esp.add_peer(host)
+                                print(f"[ESPNowRemote] Auto-added sender as peer: {self._mac_to_str(host)}")
                             self.known_peers.append(host)
-                            print(f"[ESPNowRemote] Auto-added sender as peer: {self._mac_to_str(host)}")
                         except Exception as e:
                             # Peer might already exist, that's okay
                             err_str = str(e).lower()

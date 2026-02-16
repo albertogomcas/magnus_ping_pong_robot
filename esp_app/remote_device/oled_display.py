@@ -19,11 +19,15 @@ class OLEDDisplay:
         self.oled.show()
 
     def draw_ui(self, layer_name, layer_num, key_labels, status, battery_voltage):
-        """Draw main UI"""
+        """Draw main UI with layer-specific information"""
         self.oled.fill(0)
 
-        # Yellow band (top 16 pixels): Title only
+        # Yellow band (top 16 pixels): Layer name + status symbol
         self.oled.text(layer_name, 0, 4)
+
+        # Status symbol (▶ for active, ■ for standby) next to layer name
+        status_symbol = '>>>' if status.get('launcher_active') else 'STP'
+        self.oled.text(status_symbol, 42, 4)
 
         # Battery indicator on right side of title
         self._draw_battery_indicator(battery_voltage, 98, 3)
@@ -32,25 +36,61 @@ class OLEDDisplay:
         self.oled.hline(0, 16, 128, 1)
 
         # Main content area (white area: y=18 to y=63)
+        # Show different information based on layer
 
-        # Launcher status - large and prominent
-        y_pos = 24
-        if status.get('launcher_active'):
-            self.oled.text("STATUS: ACTIVE", 0, y_pos)
-        else:
-            self.oled.text("STATUS: STANDBY", 0, y_pos)
-
-        # Speed setting
-        y_pos += 12
-        speed = status.get('speed', 0)
-        self.oled.text(f"Speed: {speed:.0f}%", 0, y_pos)
-
-        # Spin angle setting
-        y_pos += 12
-        spin_angle = status.get('spin_angle', 0)
-        self.oled.text(f"Spin Angle: {spin_angle:.0f}", 0, y_pos)
+        if layer_num == 0:  # AIM layer
+            self._draw_aim_info(status)
+        elif layer_num == 1:  # SPIN layer
+            self._draw_spin_info(status)
+        elif layer_num == 2:  # SPEED layer
+            self._draw_speed_info(status)
 
         self.oled.show()
+
+    def _draw_aim_info(self, status):
+        """Draw aimer information (Layer 0: AIM)"""
+        y_pos = 24
+
+        # Vertical aim (tilt)
+        tilt = status.get('tilt', 0)
+        self.oled.text(f"Vert: {tilt:.1f}", 0, y_pos)
+
+        # Horizontal aim (pan)
+        y_pos += 12
+        pan = status.get('pan', 0)
+        self.oled.text(f"Horiz: {pan:.1f}", 0, y_pos)
+
+
+    def _draw_spin_info(self, status):
+        """Draw spin information (Layer 1: SPIN)"""
+        y_pos = 24
+
+        # Spin angle
+        spin_angle = status.get('spin_angle', 0)
+        self.oled.text(f"Angle: {spin_angle}", 0, y_pos)
+
+        # Spin strength (percentage)
+        y_pos += 12
+        spin_strength = status.get('spin_strength', 0)
+        self.oled.text(f"Spin: {spin_strength:.0f}%", 0, y_pos)
+
+    def _draw_speed_info(self, status):
+        """Draw speed/settings information (Layer 2: SPEED)"""
+        y_pos = 24
+
+        # Launcher speed
+        speed = status.get('speed', 0)
+        self.oled.text(f"Launch: {speed}%", 0, y_pos)
+
+        # Spin strength
+        y_pos += 12
+        spin_strength = status.get('spin_strength', 0)
+        self.oled.text(f"Spin: {spin_strength:.0f}%", 0, y_pos)
+
+        # Feed interval
+        y_pos += 12
+        interval = status.get('interval', 0)
+        self.oled.text(f"Interval: {interval:.1f}s", 0, y_pos)
 
     def _draw_battery_indicator(self, voltage, x, y):
         """Draw battery level indicator with bars"""

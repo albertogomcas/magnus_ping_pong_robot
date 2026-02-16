@@ -10,6 +10,17 @@ from keypad import Keypad
 from oled_display import OLEDDisplay
 from espnow_sender import ESPNowSender
 
+# Try to import WiFi credentials
+try:
+    from secrets import Wifi
+    WIFI_AVAILABLE = True
+except ImportError:
+    print("[Remote] Warning: No secrets.py found, WiFi auto-detection disabled")
+    WIFI_AVAILABLE = False
+    class Wifi:
+        ssid = None
+        password = None
+
 # Configuration
 RECEIVER_MAC = b'\xb0\xa7\x32\x32\x73\x1c'  # TODO: Replace with actual receiver MAC address
 LOW_BATTERY_THRESHOLD = 3.3  # volts
@@ -35,10 +46,20 @@ class RemoteController:
         self.i2c = I2C(0, scl=Pin(22), sda=Pin(21), freq=400000)
         self.display = OLEDDisplay(self.i2c)
 
-        # ESP-NOW sender - channel MUST match receiver's WiFi channel
-        # Check receiver's startup output for: "[ESPNowRemote] WiFi already connected on channel X"
-        # Common channels: 1, 6, 11 (most WiFi routers use these)
-        self.sender = ESPNowSender(RECEIVER_MAC, channel=10)
+        # ESP-NOW sender - auto-detect channel from WiFi connection
+        # If WiFi credentials are available, connect briefly to get the channel
+        # then disconnect and use that channel for ESP-NOW
+        if WIFI_AVAILABLE and Wifi.ssid:
+            print(f"[Remote] Auto-detecting WiFi channel from network: {Wifi.ssid}")
+            self.sender = ESPNowSender(
+                RECEIVER_MAC,
+                wifi_ssid=Wifi.ssid,
+                wifi_password=Wifi.password
+            )
+        else:
+            print(f"[Remote] No WiFi credentials, using default channel 1")
+            print(f"[Remote] Create secrets.py with WiFi credentials for auto-detection")
+            self.sender = ESPNowSender(RECEIVER_MAC, channel=1)
 
         # Battery monitoring (ESP32-C6: ADC on GPIO 0)
         self.battery_adc = ADC(Pin(0))
@@ -56,6 +77,7 @@ class RemoteController:
             'spin_strength': 0,
             'tilt': 0,
             'pan': 0,
+            'interval': 4.0,
         }
 
         # Layer definitions: key -> action_name
@@ -85,8 +107,8 @@ class RemoteController:
                 '#': 'toggle_activation',
             },
             2: {  # Speed/settings layer
-                '1': 'speed_up',
-                '3': 'speed_down',
+                '1': 'speed_down',
+                '3': 'speed_up',
                 '4': 'decrease_spin',
                 '6': 'increase_spin',
                 '7': 'interval_up',
@@ -220,11 +242,20 @@ class RemoteController:
 
     async def status_receiver_loop(self):
         """Receive status updates from main controller"""
+        print("[Remote] Status receiver loop started")
+        msg_count = 0
         while True:
             status = self.sender.receive()
-            if status and status.get('type') == 'status_response':
-                self.status.update(status)
-                self.update_display()
+            if status:
+                msg_count += 1
+                print(f"[Remote] Received status #{msg_count}: type={status.get('type')}")
+                if status.get('type') == 'status_response':
+                    print(f"[Remote] Status data: speed={status.get('speed')}, launcher_active={status.get('launcher_active')}")
+                    self.status.update(status)
+                    print(f"[Remote] Updated internal status: {self.status}")
+                    self.update_display()
+                else:
+                    print(f"[Remote] Ignoring message with type: {status.get('type')}")
             await asyncio.sleep(0.1)
 
     async def keypad_loop(self):

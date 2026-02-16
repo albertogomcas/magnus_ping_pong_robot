@@ -145,6 +145,7 @@ main()
 - `espnow_sender.py` - ESP-NOW communication
 - `ssd1306.py` - MicroPython SSD1306 library
 - `get_mac.py` - Utility to get device MAC address
+- `secrets.py` - WiFi credentials (optional, for channel auto-detection)
 
 ## Installation
 
