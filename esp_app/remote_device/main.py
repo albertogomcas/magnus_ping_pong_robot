@@ -143,6 +143,58 @@ class RemoteController:
         print(f"[Remote] Switched to layer {self.current_layer}")
         self.update_display()
 
+    def update_local_status(self, action):
+        """Optimistically update local status based on action (for immediate display feedback)"""
+        # Toggle actions
+        if action == 'toggle_activation':
+            self.status['launcher_active'] = not self.status['launcher_active']
+
+        # Speed adjustments
+        elif action == 'speed_up':
+            self.status['speed'] = min(100, self.status['speed'] + 5)
+        elif action == 'speed_down':
+            self.status['speed'] = max(0, self.status['speed'] - 5)
+
+        # Spin adjustments
+        elif action == 'increase_spin':
+            self.status['spin_strength'] = min(100, self.status['spin_strength'] + 10)
+        elif action == 'decrease_spin':
+            self.status['spin_strength'] = max(0, self.status['spin_strength'] - 10)
+
+        # Interval adjustments
+        elif action == 'interval_up':
+            self.status['interval'] = min(10.0, self.status['interval'] + 0.5)
+        elif action == 'interval_down':
+            self.status['interval'] = max(1.0, self.status['interval'] - 0.5)
+
+        # Spin presets (updating spin angle for display)
+        elif action == 'spin_TL':
+            self.status['spin_angle'] = 135
+            self.status['spin_strength'] = 50
+        elif action == 'spin_T':
+            self.status['spin_angle'] = 90
+            self.status['spin_strength'] = 50
+        elif action == 'spin_TR':
+            self.status['spin_angle'] = 45
+            self.status['spin_strength'] = 50
+        elif action == 'spin_L':
+            self.status['spin_angle'] = 180
+            self.status['spin_strength'] = 50
+        elif action == 'spin_R':
+            self.status['spin_angle'] = 0
+            self.status['spin_strength'] = 50
+        elif action == 'spin_BL':
+            self.status['spin_angle'] = 225
+            self.status['spin_strength'] = 50
+        elif action == 'spin_B':
+            self.status['spin_angle'] = 270
+            self.status['spin_strength'] = 50
+        elif action == 'spin_BR':
+            self.status['spin_angle'] = 315
+            self.status['spin_strength'] = 50
+        elif action == 'no_spin':
+            self.status['spin_strength'] = 0
+
     def handle_key(self, key):
         """Handle keypress"""
         print(f"[Remote] Key pressed: {key}")
@@ -155,6 +207,9 @@ class RemoteController:
             return
 
         if action:
+            # Optimistically update local status for immediate feedback
+            self.update_local_status(action)
+
             # Send key press to receiver
             message = {
                 'type': 'key_press',
@@ -166,8 +221,14 @@ class RemoteController:
             self.sender.send(message)
             print(f"[Remote] Sent action: {action}")
 
+            # Immediately update display with optimistic status
+            self.update_display()
+
             # Visual feedback
             self.display.flash_key(key)
+
+            # Request immediate status sync to confirm changes
+            asyncio.create_task(self.request_status())
         else:
             print(f"[Remote] No action bound for key {key}")
 
@@ -238,7 +299,7 @@ class RemoteController:
         """Periodically request status updates"""
         while True:
             await self.request_status()
-            await asyncio.sleep(2)  # Request status every 2 seconds
+            await asyncio.sleep(1)  # Request status every 1 second for faster sync
 
     async def status_receiver_loop(self):
         """Receive status updates from main controller"""
@@ -256,7 +317,7 @@ class RemoteController:
                     self.update_display()
                 else:
                     print(f"[Remote] Ignoring message with type: {status.get('type')}")
-            await asyncio.sleep(0.1)
+            await asyncio.sleep(0.05)  # Faster polling for quicker status updates
 
     async def keypad_loop(self):
         """Main keypad scanning loop"""

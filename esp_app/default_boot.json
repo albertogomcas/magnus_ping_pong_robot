@@ -1,4 +1,4 @@
 {
-  "simulation_mode": true,
+  "simulation_mode": false,
   "run_app": true
 }
