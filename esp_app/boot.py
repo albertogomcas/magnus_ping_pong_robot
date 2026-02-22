@@ -1,3 +1,5 @@
+from machine import UART, Pin
+import gc
 import dev
 import json
 import os
@@ -26,7 +28,6 @@ def connect():
     else:
         raise RuntimeWarning("Could not connect to network")
 
-connect()
 
 try:
     if exists("custom_boot.json"):
@@ -48,3 +49,20 @@ try:
         dev.DevFlags.run_app = boot["run_app"]
 except:
     raise
+
+# Pre-allocate UART1 at the end of boot.py - all other boot imports are done,
+# but main.py (and its heavy imports) hasn't run yet.
+# We store it directly in the magnus module variable so it survives reliably.
+gc.collect()
+try:
+    _tmp = UART(1)
+    _tmp.deinit()
+except:
+    pass
+import magnus
+magnus._preallocated_uart = UART(1, baudrate=1000000,
+                                  tx=Pin(23),  # UsedPins.ST_SERVO_TX
+                                  rx=Pin(22),  # UsedPins.ST_SERVO_RX
+                                  rxbuf=256, txbuf=0)
+print("[boot] UART pre-allocated OK")
+

@@ -1,4 +1,7 @@
 from machine import Pin
+import gc
+
+
 from webmain import esp_app, main
 import asyncio
 from dev import DevFlags

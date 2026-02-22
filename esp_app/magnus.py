@@ -10,6 +10,9 @@ from stservo_wrapper import STServo
 from stservo.port_handler import PortHandlerMicroPython
 import random
 
+# Pre-allocated UART instance - set by boot.py before heap gets fragmented
+_preallocated_uart = None
+
 
 class UsedPins:
     PROGRAM = 19  # pullup
@@ -42,8 +45,20 @@ class ServoNumbers:
 
 class Magnus:
     def __init__(self):
+        import gc
+        global _preallocated_uart
+        gc.collect()
+        print(f"[Magnus] Free memory at init: {gc.mem_free()} bytes")
+
+        # Reuse UART pre-allocated in boot.py (before heap fragmentation)
+        if _preallocated_uart is not None:
+            self.ST_UART = _preallocated_uart
+            _preallocated_uart = None  # release the module-level reference
+            print("[Magnus] Reusing pre-allocated UART")
+        else:
+            self.ST_UART = UART(1, baudrate=1000000, tx=Pin(UsedPins.ST_SERVO_TX), rx=Pin(UsedPins.ST_SERVO_RX), rxbuf=256, txbuf=0)
+            print("[Magnus] Created new UART (no pre-allocation found)")
         self.supply = Supply(UsedPins.ESC_ALIVE)
-        self.ST_UART = UART(1, baudrate=1000000, tx=Pin(UsedPins.ST_SERVO_TX), rx=Pin(UsedPins.ST_SERVO_RX))
         self.port_handler = PortHandlerMicroPython(self.ST_UART)
 
         self.feeder_servo = STServo(self.port_handler, servo_id=ServoNumbers.feeder)
@@ -65,11 +80,16 @@ class Magnus:
         self._sequence_idx = 0
         self._sequence_task = None
 
-        # Initialize ESP-NOW remote (auto-detects WiFi channel)
-        # Status sending now enabled - fixed to add peers with channel parameter
+        # Remote will be initialized after WiFi connects
+        self.remote = None
+
+
+
+
+    def enable_remote(self):
+        """Initialize ESP-NOW remote after WiFi is connected (so the channel is known)."""
         self.remote = ESPNowRemote(enable_status_send=True)
 
-        # Bind actions to remote commands
         # Layer 0 - Control
         self.remote.bind("aimer_up", self.aimer.up)
         self.remote.bind("aimer_down", self.aimer.down)
@@ -99,12 +119,8 @@ class Magnus:
         self.remote.bind("interval_up", self.interval_up)
         self.remote.bind("interval_down", self.interval_down)
 
-        # Set status callback for broadcasting to remote
-        # Use remote_status() which returns a flat structure suitable for OLED display
         self.remote.set_status_callback(self.remote_status)
-
-
-
+        print("[Magnus] Remote enabled")
 
     def calibrate(self):
         self.launcher.set_speed("all", 100, force=True)

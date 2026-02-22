@@ -1,20 +1,46 @@
 from microdot import Microdot, Response
 import machine
+import network
+import time
 
 import dev
 from magnus import UsedPins, Magnus
 from ujrpc import JRPCService
 import asyncio
+from secrets import Wifi
 
 UsedPins.sanity_check()
+import gc
+gc.collect()
+print(f"Free memory before Magnus: {gc.mem_free()}")
+
+# 1. Instantiate Magnus first - before WiFi takes memory
 magnus = Magnus()
+
+# 2. Now connect WiFi so ESPNow knows the channel
+print("[Webmain] Connecting WiFi...")
+nic = network.WLAN(network.STA_IF)
+nic.active(True)
+nic.ifconfig(('10.0.0.47', '255.255.255.0', '10.0.0.138', '8.8.8.8'))
+nic.connect(Wifi.ssid, Wifi.password)
+start = time.time()
+while time.time() - start < 10:
+    if nic.isconnected():
+        break
+    time.sleep(0.1)
+else:
+    raise RuntimeWarning("Could not connect to network")
+print(f"[Webmain] WiFi connected, channel={nic.config('channel')}")
+
+# 3. Initialize ESP-NOW remote now that WiFi channel is known
+magnus.enable_remote()
 
 async def main():
     magnus.halt()
 
     feed_task = asyncio.create_task(magnus.feeder.run())
     shaker_task = asyncio.create_task(magnus.shaker.run())
-    remote_task = asyncio.create_task(magnus.remote.run())
+    remote_task = asyncio.create_task(magnus.remote.run()) if magnus.remote else None
 
     offline = False
     calibrated = False
@@ -58,6 +84,8 @@ async def main():
         magnus.halt()
         feed_task.cancel()
         shaker_task.cancel()
+        if remote_task:
+            remote_task.cancel()
         raise
 
 jrpc = JRPCService(api_version=1)
