@@ -129,7 +129,7 @@ class RemoteController:
         """Read battery voltage"""
         raw = self.battery_adc.read()
         # Assuming voltage divider 2:1
-        voltage = (raw / 4095.0) * 3.6 * 2
+        voltage = (raw / 4095.0) * 3.3 * 2
         return voltage
 
     def check_battery(self):
@@ -143,61 +143,12 @@ class RemoteController:
         print(f"[Remote] Switched to layer {self.current_layer}")
         self.update_display()
 
-    def update_local_status(self, action):
-        """Optimistically update local status based on action (for immediate display feedback)"""
-        # Toggle actions
-        if action == 'toggle_activation':
-            self.status['launcher_active'] = not self.status['launcher_active']
+    def handle_key(self, key, press_type='short'):
+        """Handle keypress
 
-        # Speed adjustments
-        elif action == 'speed_up':
-            self.status['speed'] = min(100, self.status['speed'] + 5)
-        elif action == 'speed_down':
-            self.status['speed'] = max(0, self.status['speed'] - 5)
-
-        # Spin adjustments
-        elif action == 'increase_spin':
-            self.status['spin_strength'] = min(100, self.status['spin_strength'] + 10)
-        elif action == 'decrease_spin':
-            self.status['spin_strength'] = max(0, self.status['spin_strength'] - 10)
-
-        # Interval adjustments
-        elif action == 'interval_up':
-            self.status['interval'] = min(10.0, self.status['interval'] + 0.5)
-        elif action == 'interval_down':
-            self.status['interval'] = max(1.0, self.status['interval'] - 0.5)
-
-        # Spin presets (updating spin angle for display)
-        elif action == 'spin_TL':
-            self.status['spin_angle'] = 135
-            self.status['spin_strength'] = 50
-        elif action == 'spin_T':
-            self.status['spin_angle'] = 90
-            self.status['spin_strength'] = 50
-        elif action == 'spin_TR':
-            self.status['spin_angle'] = 45
-            self.status['spin_strength'] = 50
-        elif action == 'spin_L':
-            self.status['spin_angle'] = 180
-            self.status['spin_strength'] = 50
-        elif action == 'spin_R':
-            self.status['spin_angle'] = 0
-            self.status['spin_strength'] = 50
-        elif action == 'spin_BL':
-            self.status['spin_angle'] = 225
-            self.status['spin_strength'] = 50
-        elif action == 'spin_B':
-            self.status['spin_angle'] = 270
-            self.status['spin_strength'] = 50
-        elif action == 'spin_BR':
-            self.status['spin_angle'] = 315
-            self.status['spin_strength'] = 50
-        elif action == 'no_spin':
-            self.status['spin_strength'] = 0
-
-    def handle_key(self, key):
-        """Handle keypress"""
-        print(f"[Remote] Key pressed: {key}")
+        press_type: 'short' or 'long' - determines adjustment magnitude
+        """
+        print(f"[Remote] Key pressed: {key} ({press_type})")
 
         # Get action for this key in current layer
         action = self.layers[self.current_layer].get(key)
@@ -207,27 +158,22 @@ class RemoteController:
             return
 
         if action:
-            # Optimistically update local status for immediate feedback
-            self.update_local_status(action)
-
-            # Send key press to receiver
+            # Send key press to receiver with press type
             message = {
                 'type': 'key_press',
                 'layer': self.current_layer,
                 'key': key,
                 'action': action,
+                'press_type': press_type,
                 'timestamp': time.time(),
             }
             self.sender.send(message)
-            print(f"[Remote] Sent action: {action}")
-
-            # Immediately update display with optimistic status
-            self.update_display()
+            print(f"[Remote] Sent action: {action} ({press_type})")
 
             # Visual feedback
             self.display.flash_key(key)
 
-            # Request immediate status sync to confirm changes
+            # Request immediate status update to get real values from robot
             asyncio.create_task(self.request_status())
         else:
             print(f"[Remote] No action bound for key {key}")
@@ -322,12 +268,9 @@ class RemoteController:
     async def keypad_loop(self):
         """Main keypad scanning loop"""
         while True:
-            key = self.keypad.scan()
-            if key:
-                self.handle_key(key)
-                # Debounce
-                await asyncio.sleep(0.2)
-
+            key, press_type = self.keypad.scan()
+            if key and press_type:
+                self.handle_key(key, press_type)
 
             await asyncio.sleep(0.05)
 

@@ -51,21 +51,29 @@ class Keypad:
         # Initialize column pins as inputs with pull-up resistors
         self.cols = [Pin(pin, Pin.IN, Pin.PULL_UP) for pin in col_pins]
 
-        # Debouncing
+        # Debouncing and long press detection
         self.last_key = None
         self.last_key_time = 0
         self.debounce_time = 0.2  # 200ms debounce
+
+        # Long press tracking
+        self.key_pressed = None
+        self.key_press_start = 0
+        self.long_press_threshold = 0.5  # 500ms for long press
+        self.long_press_reported = False
 
         print(f"[Keypad] Initialized with {len(self.rows)} rows, {len(self.cols)} columns")
 
     def scan(self):
         """
-        Scan the keypad matrix and return pressed key
-        Returns: Key character or None if no key pressed
+        Scan the keypad matrix and detect key presses
+        Returns: Tuple (key, press_type) where press_type is 'short', 'long', or None
+                 Returns (None, None) if no event to report
         """
         current_time = time.time()
+        key_currently_pressed = None
 
-        # Scan each row
+        # Scan each row to find if any key is pressed
         for row_idx, row in enumerate(self.rows):
             # Set current row LOW
             row.value(0)
@@ -76,24 +84,58 @@ class Keypad:
             # Check each column
             for col_idx, col in enumerate(self.cols):
                 if col.value() == 0:  # Key pressed (column pulled LOW)
-                    # Determine which key was pressed
                     if row_idx < len(self.keys):
-                        key = self.keys[row_idx][col_idx]
-
-                        # Debouncing: only register if enough time has passed
-                        if key != self.last_key or (current_time - self.last_key_time) > self.debounce_time:
-                            self.last_key = key
-                            self.last_key_time = current_time
-
-                            # Set row back HIGH before returning
-                            row.value(1)
-                            return key
+                        key_currently_pressed = self.keys[row_idx][col_idx]
+                        break  # Found pressed key
 
             # Set row back HIGH
             row.value(1)
 
-        # No key pressed
-        return None
+            if key_currently_pressed:
+                break  # Found pressed key, no need to scan more rows
+
+        # State machine for long press detection
+        if key_currently_pressed:
+            if self.key_pressed is None:
+                # New key press detected
+                self.key_pressed = key_currently_pressed
+                self.key_press_start = current_time
+                self.long_press_reported = False
+                return (None, None)  # Don't report yet, wait to see if it's short or long
+
+            elif self.key_pressed == key_currently_pressed:
+                # Same key still pressed - check for long press
+                press_duration = current_time - self.key_press_start
+
+                if not self.long_press_reported and press_duration >= self.long_press_threshold:
+                    # Long press detected!
+                    self.long_press_reported = True
+                    return (key_currently_pressed, 'long')
+
+                # Still pressed but not yet long enough
+                return (None, None)
+
+            else:
+                # Different key pressed (shouldn't happen with single press)
+                self.key_pressed = key_currently_pressed
+                self.key_press_start = current_time
+                self.long_press_reported = False
+                return (None, None)
+
+        else:
+            # No key currently pressed - check if we need to report a short press
+            if self.key_pressed is not None:
+                press_duration = current_time - self.key_press_start
+                released_key = self.key_pressed
+
+                # Reset state
+                self.key_pressed = None
+
+                # Report short press only if it wasn't already reported as long
+                if not self.long_press_reported and press_duration < self.long_press_threshold:
+                    return (released_key, 'short')
+
+            return (None, None)
 
     def wait_for_key(self):
         """

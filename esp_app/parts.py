@@ -63,34 +63,42 @@ class Aimer:
             self.hservo.calibrate_middle()
         return True
 
-    def up(self):
-        """Move up"""
-        print("[Aimer] Up")
+    def up(self, step=1):
+        """Move up
+        step: Number of degrees to move (default 1, larger for long press)
+        """
+        print(f"[Aimer] Up (step={step})")
         st = self.status()
-        self.aim(vangle=st["tilt"] + 1, hangle=st["pan"])
+        self.aim(vangle=st["tilt"] + step, hangle=st["pan"])
 
-    def down(self):
-        """Move down"""
-        print("[Aimer] Down")
+    def down(self, step=1):
+        """Move down
+        step: Number of degrees to move (default 1, larger for long press)
+        """
+        print(f"[Aimer] Down (step={step})")
         st = self.status()
-        self.aim(vangle=st["tilt"] - 1, hangle=st["pan"])
+        self.aim(vangle=st["tilt"] - step, hangle=st["pan"])
 
     def middle(self):
         """Move to middle position"""
         print("[Aimer] Middle")
         self.aim(vangle=0, hangle=0)
 
-    def left(self):
-        """Move left"""
-        print("[Aimer] Left")
+    def left(self, step=1):
+        """Move left
+        step: Number of degrees to move (default 1, larger for long press)
+        """
+        print(f"[Aimer] Left (step={step})")
         st = self.status()
-        self.aim(vangle=st["tilt"], hangle=st["pan"] - 1)
+        self.aim(vangle=st["tilt"], hangle=st["pan"] - step)
 
-    def right(self):
-        """Move right"""
-        print("[Aimer] Right")
+    def right(self, step=1):
+        """Move right
+        step: Number of degrees to move (default 1, larger for long press)
+        """
+        print(f"[Aimer] Right (step={step})")
         st = self.status()
-        self.aim(vangle=st["tilt"], hangle=st["pan"] + 1)
+        self.aim(vangle=st["tilt"], hangle=st["pan"] + step)
 
 
 
@@ -285,40 +293,79 @@ class Launcher:
         else:
             self._esc[motor].set_speed(percentage, force)
 
-    def speed_up(self):
+    def speed_up(self, step=2):
+        """Increase speed
+        step: Speed increase in percentage points (default 2, use 10 for long press)
+        """
         st = self.status()
-        self.configure(speed=st["speed"]+2,
+        self.configure(speed=st["speed"]+step,
                        topspin=st["topspin"],
                        sidespin=st["sidespin"])
         self.activate()
 
-    def speed_down(self):
+    def speed_down(self, step=2):
+        """Decrease speed
+        step: Speed decrease in percentage points (default 2, use 10 for long press)
+        """
         st = self.status()
 
-        self.configure(speed=st["speed"]-2,
+        self.configure(speed=st["speed"]-step,
                        topspin=st["topspin"],
                        sidespin=st["sidespin"])
         self.activate()
 
 
 
-    def increase_spin(self):
+    def increase_spin(self, step=10):
+        """Increase spin strength
+        step: Percentage points to increase (default 10, larger for long press)
+        """
         st = self.status()
-        self.configure(
-            speed=st["speed"],
-            topspin=st["topspin"]*1.1,
-            sidespin=st["sidespin"]*1.1,
-            activate=True,
-        )
+        current_strength = st["spin_strength"] / 100  # Convert to 0-1 range
+        new_strength = min(1.0, current_strength + step / 100)
 
-    def decrease_spin(self):
+        # Maintain spin direction but increase magnitude
+        if current_strength > 0:
+            scale = new_strength / current_strength
+            self.configure(
+                speed=st["speed"],
+                topspin=st["topspin"] * scale,
+                sidespin=st["sidespin"] * scale,
+                activate=True,
+            )
+        else:
+            # If no spin, add default topspin
+            self.configure(
+                speed=st["speed"],
+                topspin=new_strength,
+                sidespin=0,
+                activate=True,
+            )
+
+    def decrease_spin(self, step=10):
+        """Decrease spin strength
+        step: Percentage points to decrease (default 10, larger for long press)
+        """
         st = self.status()
-        self.configure(
-            speed=st["speed"],
-            topspin=st["topspin"]/1.1,
-            sidespin=st["sidespin"]/1.1,
-            activate=True,
-        )
+        current_strength = st["spin_strength"] / 100  # Convert to 0-1 range
+        new_strength = max(0.0, current_strength - step / 100)
+
+        # Maintain spin direction but decrease magnitude
+        if current_strength > 0:
+            scale = new_strength / current_strength
+            self.configure(
+                speed=st["speed"],
+                topspin=st["topspin"] * scale,
+                sidespin=st["sidespin"] * scale,
+                activate=True,
+            )
+        else:
+            self.configure(
+                speed=st["speed"],
+                topspin=0,
+                sidespin=0,
+                activate=True,
+            )
 
     def no_spin(self):
         """Set no spin"""
@@ -640,10 +687,37 @@ class ESPNowRemote:
 
         if msg_type == 'key_press':
             action_name = message.get('action')
+            press_type = message.get('press_type', 'short')  # Default to short if not specified
+
             if action_name in self.actions:
                 try:
-                    print(f"[ESPNowRemote] Executing action: {action_name}")
-                    self.actions[action_name]()
+                    print(f"[ESPNowRemote] Executing action: {action_name} ({press_type})")
+
+                    # Determine step size based on press type
+                    # Map actions to their step parameters
+                    step_map = {
+                        'short': {
+                            'aimer_up': 1, 'aimer_down': 1, 'aimer_left': 1, 'aimer_right': 1,
+                            'speed_up': 2, 'speed_down': 2,
+                            'increase_spin': 10, 'decrease_spin': 10,
+                            'interval_up': 0.25, 'interval_down': 0.25,
+                        },
+                        'long': {
+                            'aimer_up': 5, 'aimer_down': 5, 'aimer_left': 5, 'aimer_right': 5,
+                            'speed_up': 10, 'speed_down': 10,
+                            'increase_spin': 20, 'decrease_spin': 20,
+                            'interval_up': 1.0, 'interval_down': 1.0,
+                        }
+                    }
+
+                    # Call action with step parameter if applicable
+                    if action_name in step_map[press_type]:
+                        step = step_map[press_type][action_name]
+                        self.actions[action_name](step=step)
+                    else:
+                        # Actions without step parameter (toggles, presets, etc.)
+                        self.actions[action_name]()
+
                 except Exception as e:
                     print(f"[ESPNowRemote] Error executing {action_name}: {e}")
             else:

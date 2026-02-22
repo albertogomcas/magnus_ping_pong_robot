@@ -114,19 +114,23 @@ class Magnus:
         print("[Magnus] calibrated")
         time.sleep(1)
 
-    def interval_up(self):
-        """Increase feed interval"""
+    def interval_up(self, step=0.25):
+        """Increase feed interval
+        step: Interval increase in seconds (default 0.25, larger for long press)
+        """
         current = self.feeder.interval
-        new_interval = min(current + 0.5, 10)
+        new_interval = min(current + step, 10)
         self.feeder.set_ball_interval(new_interval)
-        print(f"[Magnus] Interval increased to {new_interval}s")
+        print(f"[Magnus] Interval increased by {step}s to {new_interval}s")
 
-    def interval_down(self):
-        """Decrease feed interval"""
+    def interval_down(self, step=0.25):
+        """Decrease feed interval
+        step: Interval decrease in seconds (default 0.25, larger for long press)
+        """
         current = self.feeder.interval
-        new_interval = max(current - 0.5, 0.5)
+        new_interval = max(current - step, 0.5)
         self.feeder.set_ball_interval(new_interval)
-        print(f"[Magnus] Interval decreased to {new_interval}s")
+        print(f"[Magnus] Interval decreased by {step}s to {new_interval}s")
 
     def toggle_activation(self):
         # If speed is 0, set a default speed before activating
