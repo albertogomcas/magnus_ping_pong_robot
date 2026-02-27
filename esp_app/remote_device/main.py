@@ -46,11 +46,15 @@ class RemoteController:
         self.i2c = I2C(0, scl=Pin(22), sda=Pin(21), freq=400000)
         self.display = OLEDDisplay(self.i2c)
 
+        # Show startup screen immediately, before slow WiFi init
+        self._show_startup("Booting...")
+
         # ESP-NOW sender - auto-detect channel from WiFi connection
         # If WiFi credentials are available, connect briefly to get the channel
         # then disconnect and use that channel for ESP-NOW
         if WIFI_AVAILABLE and Wifi.ssid:
             print(f"[Remote] Auto-detecting WiFi channel from network: {Wifi.ssid}")
+            self._show_startup(f"WiFi: {Wifi.ssid[:14]}")
             self.sender = ESPNowSender(
                 RECEIVER_MAC,
                 wifi_ssid=Wifi.ssid,
@@ -59,10 +63,11 @@ class RemoteController:
         else:
             print(f"[Remote] No WiFi credentials, using default channel 1")
             print(f"[Remote] Create secrets.py with WiFi credentials for auto-detection")
+            self._show_startup("No WiFi creds\nCh 1 default")
             self.sender = ESPNowSender(RECEIVER_MAC, channel=1)
 
-        # Battery monitoring (ESP32-C6: ADC on GPIO 0)
-        self.battery_adc = ADC(Pin(0))
+        # Battery monitoring (ESP32-C6: ADC on GPIO 1)
+        self.battery_adc = ADC(Pin(1))
         self.battery_adc.atten(ADC.ATTN_11DB)  # Full range
 
         # State
@@ -125,11 +130,25 @@ class RemoteController:
             2: 'SPEED',
         }
 
+    def _show_startup(self, message):
+        """Display a startup/boot status message on the OLED immediately"""
+        oled = self.display.oled
+        oled.fill(0)
+        oled.text("RoboPong Remote", 0, 0)
+        oled.hline(0, 10, 128, 1)
+        # Support two lines separated by \n
+        lines = message.split('\n')
+        for i, line in enumerate(lines):
+            oled.text(line, 0, 22 + i * 12)
+        oled.show()
+
     def get_battery_voltage(self):
-        """Read battery voltage"""
-        raw = self.battery_adc.read()
-        # Assuming voltage divider 2:1
-        voltage = (raw / 4095.0) * 3.3 * 2
+        """Read battery voltage using calibrated ADC"""
+        # read_uv() returns microvolts with factory calibration applied,
+        # compensating for the ESP32 ADC non-linearity and effective range
+        voltage_at_pin = self.battery_adc.read_uv() / 1_000_000  # convert to volts
+        # Voltage divider 2:1: battery = pin_voltage * 2
+        voltage = voltage_at_pin * 2
         return voltage
 
     def check_battery(self):
@@ -277,6 +296,10 @@ class RemoteController:
     async def run(self):
         """Main run loop"""
         print("[Remote] Starting remote controller")
+
+        # Brief ready message before switching to main UI
+        self._show_startup("Ready!")
+        await asyncio.sleep(0.5)
 
         # Initial display
         self.update_display()

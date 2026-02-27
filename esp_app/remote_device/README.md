@@ -36,7 +36,7 @@ Summary:
 - **I2C Frequency**: 400kHz
 
 ### Battery Monitoring
-- **ADC Pin**: GPIO 0
+- **ADC Pin**: GPIO 1
 - Requires voltage divider (e.g., 2:1) for battery voltage monitoring
 - Range: 3.0V (empty) to 4.2V (full)
 
@@ -188,7 +188,7 @@ main()
 
 ### Battery Reading Incorrect
 - Adjust voltage divider ratio in `get_battery_voltage()`
-- Verify ADC connection on GPIO 0
+- Verify ADC connection on GPIO 1
 
 ## Power Consumption
 
