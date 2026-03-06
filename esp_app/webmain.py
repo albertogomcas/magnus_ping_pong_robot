@@ -124,6 +124,166 @@ def sync_settings(r, settings):
     magnus.set_settings(**settings)
     return status(r)
 
+# --- Aim ---
+
+@jrpc.fn(name="set_aim")
+def set_aim(r, tilt=None, pan=None):
+    """Set absolute aim position. Omit either axis to keep it unchanged."""
+    aim_st = magnus.aimer.status()
+    magnus.aimer.aim(
+        vangle=tilt if tilt is not None else aim_st["tilt"],
+        hangle=pan if pan is not None else aim_st["pan"],
+    )
+    return status(r)
+
+@jrpc.fn(name="aim_up")
+def aim_up(r, step=1):
+    magnus.aimer.up(step=step)
+    return status(r)
+
+@jrpc.fn(name="aim_down")
+def aim_down(r, step=1):
+    magnus.aimer.down(step=step)
+    return status(r)
+
+@jrpc.fn(name="aim_left")
+def aim_left(r, step=1):
+    magnus.aimer.left(step=step)
+    return status(r)
+
+@jrpc.fn(name="aim_right")
+def aim_right(r, step=1):
+    magnus.aimer.right(step=step)
+    return status(r)
+
+@jrpc.fn(name="aim_center")
+def aim_center(r):
+    magnus.aimer.middle()
+    return status(r)
+
+# --- Launcher ---
+
+@jrpc.fn(name="set_launcher")
+def set_launcher(r, speed=None, spin_angle=None, spin_strength=None, active=None):
+    """Set launcher parameters individually. Omit any param to keep it unchanged."""
+    import math as _math
+    st = magnus.launcher.status()
+    spd = speed if speed is not None else st["speed"]
+    angle = spin_angle if spin_angle is not None else st["spin_angle"]
+    strength = spin_strength if spin_strength is not None else st["spin_strength"]
+    was_active = st["active"] if active is None else active
+
+    topspin = _math.cos(_math.radians(angle)) * strength / 100
+    sidespin = _math.sin(_math.radians(angle)) * strength / 100
+    magnus.launcher.configure(speed=spd, topspin=topspin, sidespin=sidespin)
+
+    if was_active:
+        magnus.launcher.activate()
+    else:
+        magnus.launcher.halt()
+    return status(r)
+
+@jrpc.fn(name="activate")
+def activate(r):
+    """Activate launcher (and feeder if interval is set)."""
+    magnus.launcher.activate()
+    magnus.feeder.activate()
+    return status(r)
+
+@jrpc.fn(name="halt")
+def halt(r):
+    """Stop launcher and feeder."""
+    magnus.launcher.halt()
+    return status(r)
+
+@jrpc.fn(name="speed_up")
+def speed_up(r, step=2):
+    magnus.launcher.speed_up(step=step)
+    return status(r)
+
+@jrpc.fn(name="speed_down")
+def speed_down(r, step=2):
+    magnus.launcher.speed_down(step=step)
+    return status(r)
+
+@jrpc.fn(name="increase_spin")
+def increase_spin(r, step=10):
+    magnus.launcher.increase_spin(step=step)
+    return status(r)
+
+@jrpc.fn(name="decrease_spin")
+def decrease_spin(r, step=10):
+    magnus.launcher.decrease_spin(step=step)
+    return status(r)
+
+@jrpc.fn(name="no_spin")
+def no_spin(r):
+    magnus.launcher.no_spin()
+    return status(r)
+
+@jrpc.fn(name="spin_T")
+def spin_T(r, strength=0.5):
+    magnus.launcher.spin_T(strength=strength)
+    return status(r)
+
+@jrpc.fn(name="spin_B")
+def spin_B(r, strength=0.5):
+    magnus.launcher.spin_B(strength=strength)
+    return status(r)
+
+@jrpc.fn(name="spin_L")
+def spin_L(r, strength=0.5):
+    magnus.launcher.spin_L(strength=strength)
+    return status(r)
+
+@jrpc.fn(name="spin_R")
+def spin_R(r, strength=0.5):
+    magnus.launcher.spin_R(strength=strength)
+    return status(r)
+
+@jrpc.fn(name="spin_TL")
+def spin_TL(r, strength=0.5):
+    magnus.launcher.spin_TL(strength=strength)
+    return status(r)
+
+@jrpc.fn(name="spin_TR")
+def spin_TR(r, strength=0.5):
+    magnus.launcher.spin_TR(strength=strength)
+    return status(r)
+
+@jrpc.fn(name="spin_BL")
+def spin_BL(r, strength=0.5):
+    magnus.launcher.spin_BL(strength=strength)
+    return status(r)
+
+@jrpc.fn(name="spin_BR")
+def spin_BR(r, strength=0.5):
+    magnus.launcher.spin_BR(strength=strength)
+    return status(r)
+
+@jrpc.fn(name="spin_random")
+def spin_random(r):
+    magnus.launcher.spin_random()
+    return status(r)
+
+# --- Feed interval ---
+
+@jrpc.fn(name="set_feed_interval")
+def set_feed_interval(r, interval):
+    """Set ball feed interval in seconds."""
+    magnus.feeder.set_ball_interval(interval)
+    return status(r)
+
+@jrpc.fn(name="interval_up")
+def interval_up(r, step=0.25):
+    magnus.interval_up(step=step)
+    return status(r)
+
+@jrpc.fn(name="interval_down")
+def interval_down(r, step=0.25):
+    magnus.interval_down(step=step)
+    return status(r)
+
 @jrpc.fn(name="set_sequence")
 def set_sequence(r, sequence):
     #print(f"Got sequence {sequence}")

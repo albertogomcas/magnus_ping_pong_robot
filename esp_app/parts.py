@@ -372,45 +372,45 @@ class Launcher:
         st = self.status()
         self.configure(speed=st["speed"], topspin=0, sidespin=0, activate=True)
 
-    def spin_T(self):
+    def spin_T(self, strength=0.5):
         """Set topspin only"""
         st = self.status()
-        self.configure(speed=st["speed"], topspin=0.5, sidespin=0, activate=True)
+        self.configure(speed=st["speed"], topspin=strength, sidespin=0, activate=True)
 
-    def spin_B(self):
+    def spin_B(self, strength=0.5):
         """Set backspin only"""
         st = self.status()
-        self.configure(speed=st["speed"], topspin=-0.5, sidespin=0, activate=True)
+        self.configure(speed=st["speed"], topspin=-strength, sidespin=0, activate=True)
 
-    def spin_L(self):
+    def spin_L(self, strength=0.5):
         """Set left sidespin only"""
         st = self.status()
-        self.configure(speed=st["speed"], topspin=0, sidespin=-0.5, activate=True)
+        self.configure(speed=st["speed"], topspin=0, sidespin=-strength, activate=True)
 
-    def spin_R(self):
+    def spin_R(self, strength=0.5):
         """Set right sidespin only"""
         st = self.status()
-        self.configure(speed=st["speed"], topspin=0, sidespin=0.5, activate=True)
+        self.configure(speed=st["speed"], topspin=0, sidespin=strength, activate=True)
 
-    def spin_TL(self):
+    def spin_TL(self, strength=0.5):
         """Set topspin and left sidespin"""
         st = self.status()
-        self.configure(speed=st["speed"], topspin=0.5, sidespin=-0.5, activate=True)
+        self.configure(speed=st["speed"], topspin=strength, sidespin=-strength, activate=True)
 
-    def spin_TR(self):
+    def spin_TR(self, strength=0.5):
         """Set topspin and right sidespin"""
         st = self.status()
-        self.configure(speed=st["speed"], topspin=0.5, sidespin=0.5, activate=True)
+        self.configure(speed=st["speed"], topspin=strength, sidespin=strength, activate=True)
 
-    def spin_BL(self):
+    def spin_BL(self, strength=0.5):
         """Set backspin and left sidespin"""
         st = self.status()
-        self.configure(speed=st["speed"], topspin=-0.5, sidespin=-0.5, activate=True)
+        self.configure(speed=st["speed"], topspin=-strength, sidespin=-strength, activate=True)
 
-    def spin_BR(self):
+    def spin_BR(self, strength=0.5):
         """Set backspin and right sidespin"""
         st = self.status()
-        self.configure(speed=st["speed"], topspin=-0.5, sidespin=0.5, activate=True)
+        self.configure(speed=st["speed"], topspin=-strength, sidespin=strength, activate=True)
 
     def spin_random(self):
         """Set random spin"""

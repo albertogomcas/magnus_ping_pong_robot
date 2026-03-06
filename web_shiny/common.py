@@ -97,6 +97,58 @@ def delete_preset_from_file(preset_name):
         with open('presets.json', 'w') as f:
             json.dump(presets, f)
 
+# --------------------------------------------------------------------------- #
+#  Low-level RPC helper
+# --------------------------------------------------------------------------- #
+
+def rpc_call(method, params=None, rpc_id=1, timeout=2):
+    """Send a single JSON-RPC 2.0 request and return the parsed response."""
+    url = robot_url + "/rpc"
+    payload = {"jsonrpc": "2.0", "method": method, "id": rpc_id}
+    if params is not None:
+        payload["params"] = params
+    headers = {'Content-Type': 'application/json'}
+    try:
+        response = requests.post(url, headers=headers, json=payload, verify=False, timeout=timeout)
+        return response.json()
+    except requests.exceptions.Timeout:
+        print(f"Timeout calling {method}")
+        return {"error": "timeout"}
+    except Exception as e:
+        print(f"Error calling {method}: {e}")
+        return {"error": str(e)}
+
+# --------------------------------------------------------------------------- #
+#  Granular setters  (each touches only the parameter it owns)
+# --------------------------------------------------------------------------- #
+
+def set_speed(speed):
+    return rpc_call("set_launcher", {"speed": speed})
+
+def set_spin(spin_angle, spin_strength):
+    return rpc_call("set_launcher", {"spin_angle": spin_angle, "spin_strength": spin_strength})
+
+def set_aim(tilt=None, pan=None):
+    params = {}
+    if tilt is not None:
+        params["tilt"] = tilt
+    if pan is not None:
+        params["pan"] = pan
+    return rpc_call("set_aim", params)
+
+def set_feed_interval(interval):
+    return rpc_call("set_feed_interval", {"interval": interval})
+
+def activate():
+    return rpc_call("activate")
+
+def halt():
+    return rpc_call("halt")
+
+# --------------------------------------------------------------------------- #
+#  Legacy full-state sync  (kept for drill / preset apply)
+# --------------------------------------------------------------------------- #
+
 # Function to sync settings with the robot
 def sync_settings(feeder_active, launcher_active, speed, spin_angle, spin_strength, pan, tilt, feed_interval):
     url = robot_url + "/rpc"

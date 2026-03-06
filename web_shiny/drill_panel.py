@@ -1,5 +1,5 @@
 from shiny import ui, reactive, render, App
-from common import load_presets_from_file, sync_settings, set_sequence, start_sequence, stop_sequence
+from common import load_presets_from_file, set_sequence, start_sequence, stop_sequence, halt
 import concurrent.futures
 
 # UI for the Drill panel
@@ -66,21 +66,11 @@ def server_drill(input, output, session):
     @reactive.event(input.btn_cancel_drill)
     def _cancel_drill():
         stop_sequence()
-        # Turn off the feeder and launcher when canceled
         try:
-            sync_settings(
-                feeder_active=False,
-                launcher_active=False,
-                speed=0,
-                spin_angle=0,
-                spin_strength=0,
-                pan=0,
-                tilt=0,
-                feed_interval=input.drill_feed_interval(),
-            )
-            ui.notification_show("Drill cancelled. Feeder and launcher turned off.", type="warning")
+            halt()
+            ui.notification_show("Drill cancelled. Launcher stopped.", type="warning")
         except Exception as e:
-            ui.notification_show(f"Error turning off feeder and launcher: {e}", type="error")
+            ui.notification_show(f"Error stopping launcher: {e}", type="error")
 
 
 drill_app = App(ui.page_navbar(ui_drill()), server_drill)

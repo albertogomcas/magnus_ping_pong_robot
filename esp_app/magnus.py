@@ -206,34 +206,41 @@ class Magnus:
         }
 
     def set_settings(self, **settings):
+        # Read current state for fallback values
+        launcher_st = self.launcher.status()
+        aim_st = self.aimer.status()
+        feeder_st = self.feeder.status()
+
         interval = settings.get("feed_interval", None)
         if interval is not None:
             self.feeder.set_ball_interval(interval)
 
-        self.aimer.aim(
-            vangle=settings.get("tilt", None),
-            hangle=settings.get("pan", None),
-        )
+        tilt = settings.get("tilt", aim_st["tilt"])
+        pan = settings.get("pan", aim_st["pan"])
+        self.aimer.aim(vangle=tilt, hangle=pan)
 
-        speed = settings["speed"]
-        spin_angle = settings["spin_angle"]
-        spin_strength = settings["spin_strength"]
+        speed = settings.get("speed", launcher_st["speed"])
+        spin_angle = settings.get("spin_angle", launcher_st["spin_angle"])
+        spin_strength = settings.get("spin_strength", launcher_st["spin_strength"])
 
         topspin = math.cos(math.radians(spin_angle)) * spin_strength / 100
         sidespin = math.sin(math.radians(spin_angle)) * spin_strength / 100
 
         self.launcher.configure(speed=speed, topspin=topspin, sidespin=sidespin)
 
-        if settings.get("launcher_active", False):
+        launcher_active = settings.get("launcher_active", launcher_st["active"])
+        feeder_active = settings.get("feeder_active", feeder_st["active"])
+
+        if launcher_active:
             self.launcher.activate()
         else:
             self.launcher.halt()
 
-        if settings.get("feeder_active", False):
+        if feeder_active:
             if self.launcher.active and self.launcher.speed > 0:
                 self.feeder.activate()
         else:
-            print("[Magnus] launcher is not running, feeder activation prevented")
+            print("[Magnus] feeder deactivated")
             self.feeder.halt()
 
     def feed_one(self):

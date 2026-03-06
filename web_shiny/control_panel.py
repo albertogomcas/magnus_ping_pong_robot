@@ -1,5 +1,10 @@
 from shiny import ui, reactive, render
-from common import robot_status, sync_settings, get_settings_batcher
+from common import (
+    robot_status,
+    set_speed, set_spin, set_aim, set_feed_interval,
+    activate, halt,
+    sync_settings,
+)
 from datetime import datetime
 
 # UI for the Control panel
@@ -26,26 +31,21 @@ def ui_control():
 # Server logic for the Control panel
 def server_control(input, output, session):
     robot_status_cache = reactive.value({"online": False, "result": {}})
+    # True once we have loaded robot state into sliders for the first time.
+    # After that sliders are the source of truth — polling never touches them.
     sliders_initialized = reactive.value(False)
-    sync_in_progress = reactive.value(False)
-    user_initiated_change = reactive.value(False)
-
-    # Get the global batcher instance
-    batcher = get_settings_batcher()
 
     # Render status UI based on robot connection status
     @output()
     @render.ui
     def status_ui():
         status = robot_status_cache()
-        print("Refreshing status UI")
         if status["online"]:
             supply_on = status["result"]["supply"]["esc_alive"]
             if supply_on:
                 session.robot_status_text.set("🟢⚡")
             else:
                 session.robot_status_text.set("🟢💤")
-
             return ui.div(
                 ui.p(f"{datetime.now().strftime('%H:%M:%S')} Robot is online!"),
             )
@@ -55,138 +55,106 @@ def server_control(input, output, session):
 
     @reactive.effect
     def poll_robot_status():
-        print("Polling robot status")
-        print(f"sliders_initialized={sliders_initialized()}, sync_in_progress={sync_in_progress()}")
-        reactive.invalidate_later(1)  # poll every 1 second
+        reactive.invalidate_later(2)  # poll every 2s — only for online/supply indicator
 
         try:
             new_status = robot_status()
             if "result" in new_status:
                 if "detector" in new_status["result"]:
-                    new_status["result"].pop("detector") # this always changes so we ignore it
+                    new_status["result"].pop("detector")  # always changes, ignore it
             if new_status != robot_status_cache():
-                print("New status: {}".format(new_status))
-                print("old status: {}".format(robot_status_cache()))
                 robot_status_cache.set(new_status)
         except Exception as e:
             print(f"Error polling robot status: {e}")
-            # Don't update cache on error to avoid disrupting the UI
 
     @reactive.effect
-    def sync_sliders():
+    def init_sliders_once():
+        """Push robot state into sliders exactly once, on first successful poll."""
         status = robot_status_cache()
-        if status["online"]:
-            if sync_in_progress():
-                print("Sync in progress, skipping slider update")
-                return
+        if sliders_initialized() or not status["online"]:
+            return
 
-            try:
-                sync_in_progress.set(True)
-                user_initiated_change.set(False)  # Prevent triggering user handlers
+        try:
+            r = status["result"]
+            is_active = r["launcher"]["active"] and r["feeder"]["active"]
+            ui.update_switch("active", value=is_active)
+            ui.update_slider("speed",          value=r["launcher"]["speed"])
+            ui.update_slider("spin_angle",     value=r["launcher"]["spin_angle"])
+            ui.update_slider("spin_strength",  value=r["launcher"]["spin_strength"])
+            ui.update_slider("pan",            value=r["aim"]["pan"])
+            ui.update_slider("tilt",           value=r["aim"]["tilt"])
+            ui.update_slider("feed_interval",  value=r["feeder"]["interval"])
+            sliders_initialized.set(True)
+            print("[control_panel] Sliders initialised from robot state")
+        except Exception as e:
+            print(f"[control_panel] Error initialising sliders: {e}")
 
-                print("Updating sliders with new status")
-                status_result = status["result"]
-                # Use launcher_active to set the combined "active" switch
-                # Both launcher and feeder will be controlled together
-                is_active = status_result["launcher"]["active"] and status_result["feeder"]["active"]
-                ui.update_switch("active", value=is_active)
-                ui.update_slider("speed", value=status_result["launcher"]["speed"])
-                ui.update_slider("spin_angle", value=status_result["launcher"]["spin_angle"])
-                ui.update_slider("spin_strength", value=status_result["launcher"]["spin_strength"])
-                ui.update_slider("pan", value=status_result["aim"]["pan"])
-                ui.update_slider("tilt", value=status_result["aim"]["tilt"])
-                ui.update_slider("feed_interval", value=status_result["feeder"]["interval"])
+    # ------------------------------------------------------------------ #
+    #  Input handlers — each calls only its own RPC, no full-state reads  #
+    # ------------------------------------------------------------------ #
 
-                sliders_initialized.set(True)
-            except Exception as e:
-                print(f"Error updating sliders: {e}")
-            finally:
-                sync_in_progress.set(False)
-                # Small delay before allowing user changes to be processed
-                reactive.invalidate_later(0.1)
-
-
-    # --- Guarded user-triggered settings sync ---
-    # Create properly registered reactive effects for user input changes
     @reactive.effect
     def _on_active():
-        input.active()  # Create dependency
-        if not sliders_initialized() or sync_in_progress():
+        is_active = input.active()
+        if not sliders_initialized():
             return
-        _send_current_settings("active")
+        try:
+            if is_active:
+                activate()
+            else:
+                halt()
+            ui.notification_show("✓", type="message", duration=0.5)
+        except Exception as e:
+            ui.notification_show(f"Error: {e}", type="error", duration=2)
 
     @reactive.effect
     def _on_speed():
-        input.speed()
-        if not sliders_initialized() or sync_in_progress():
+        speed = input.speed()
+        if not sliders_initialized():
             return
-        _send_current_settings("speed")
+        try:
+            set_speed(speed)
+        except Exception as e:
+            ui.notification_show(f"Error: {e}", type="error", duration=2)
 
     @reactive.effect
-    def _on_spin_angle():
-        input.spin_angle()
-        if not sliders_initialized() or sync_in_progress():
+    def _on_spin():
+        # Both spin sliders batched together — only fires when either changes
+        angle    = input.spin_angle()
+        strength = input.spin_strength()
+        if not sliders_initialized():
             return
-        _send_current_settings("spin_angle")
-
-    @reactive.effect
-    def _on_spin_strength():
-        input.spin_strength()
-        if not sliders_initialized() or sync_in_progress():
-            return
-        _send_current_settings("spin_strength")
+        try:
+            set_spin(angle, strength)
+        except Exception as e:
+            ui.notification_show(f"Error: {e}", type="error", duration=2)
 
     @reactive.effect
     def _on_pan():
-        input.pan()
-        if not sliders_initialized() or sync_in_progress():
+        pan = input.pan()
+        if not sliders_initialized():
             return
-        _send_current_settings("pan")
+        try:
+            set_aim(pan=pan)
+        except Exception as e:
+            ui.notification_show(f"Error: {e}", type="error", duration=2)
 
     @reactive.effect
     def _on_tilt():
-        input.tilt()
-        if not sliders_initialized() or sync_in_progress():
+        tilt = input.tilt()
+        if not sliders_initialized():
             return
-        _send_current_settings("tilt")
+        try:
+            set_aim(tilt=tilt)
+        except Exception as e:
+            ui.notification_show(f"Error: {e}", type="error", duration=2)
 
     @reactive.effect
     def _on_feed_interval():
-        input.feed_interval()
-        if not sliders_initialized() or sync_in_progress():
+        interval = input.feed_interval()
+        if not sliders_initialized():
             return
-        _send_current_settings("feed_interval")
-
-    def _send_current_settings(changed_input):
-        """Helper to send settings when user changes an input"""
         try:
-            # Get the combined active state and apply it to both launcher and feeder
-            is_active = input.active()
-            new_settings = dict(
-                feeder_active=is_active,
-                launcher_active=is_active,
-                speed=input.speed(),
-                spin_angle=input.spin_angle(),
-                spin_strength=input.spin_strength(),
-                pan=input.pan(),
-                tilt=input.tilt(),
-                feed_interval=input.feed_interval(),
-            )
-
-            # Use batching for sliders (debounced), but send immediately for active switch
-            if changed_input == "active":
-                print(f"User changed {changed_input} (immediate send): {new_settings}")
-                # Flush any pending batched changes first, then send this critical change
-                batcher.flush_now()
-                response = sync_settings(**new_settings)
-                ui.notification_show("Settings sent to RoboPong!", type="message", duration=0.25)
-            else:
-                # For sliders, use batching to prevent network flooding
-                print(f"User changed {changed_input} (batched): {new_settings}")
-                batcher.update(**new_settings)
-                # Show notification only for the first change in a batch
-                if not batcher._pending or len(batcher._pending) == len(new_settings):
-                    ui.notification_show("Updating settings...", type="message", duration=0.2)
+            set_feed_interval(interval)
         except Exception as e:
-            print(f"Error sending settings: {e}")
             ui.notification_show(f"Error: {e}", type="error", duration=2)
