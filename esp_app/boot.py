@@ -63,6 +63,6 @@ import magnus
 magnus._preallocated_uart = UART(1, baudrate=1000000,
                                   tx=Pin(23),  # UsedPins.ST_SERVO_TX
                                   rx=Pin(22),  # UsedPins.ST_SERVO_RX
-                                  rxbuf=256, txbuf=256)
+                                  rxbuf=512, txbuf=256)
 print("[boot] UART pre-allocated OK")
 

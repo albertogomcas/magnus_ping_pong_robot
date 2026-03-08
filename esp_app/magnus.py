@@ -56,7 +56,7 @@ class Magnus:
             _preallocated_uart = None  # release the module-level reference
             print("[Magnus] Reusing pre-allocated UART")
         else:
-            self.ST_UART = UART(1, baudrate=1000000, tx=Pin(UsedPins.ST_SERVO_TX), rx=Pin(UsedPins.ST_SERVO_RX), rxbuf=256, txbuf=0)
+            self.ST_UART = UART(1, baudrate=1000000, tx=Pin(UsedPins.ST_SERVO_TX), rx=Pin(UsedPins.ST_SERVO_RX), rxbuf=512, txbuf=256)
             print("[Magnus] Created new UART (no pre-allocation found)")
         self.supply = Supply(UsedPins.ESC_ALIVE)
         self.port_handler = PortHandlerMicroPython(self.ST_UART)
@@ -79,6 +79,7 @@ class Magnus:
         self._randomize_sequence = False
         self._sequence_idx = 0
         self._sequence_task = None
+        self._watchdog_task = None
 
         # Remote will be initialized after WiFi connects
         self.remote = None
@@ -120,6 +121,8 @@ class Magnus:
         self.remote.bind("interval_down", self.interval_down)
 
         self.remote.set_status_callback(self.remote_status)
+        if self._watchdog_task is None:
+            self._watchdog_task = asyncio.create_task(self.servo_watchdog())
         print("[Magnus] Remote enabled")
 
     def calibrate(self):
@@ -250,6 +253,32 @@ class Magnus:
         else:
             print("[Magnus] launcher not active, not feeding")
 
+    def flush_servo_uart(self):
+        """Discard any stale bytes sitting in the UART RX buffer."""
+        stale = self.ST_UART.any()
+        if stale > 0:
+            print(f"[Magnus] Flushing {stale} stale UART bytes")
+            self.ST_UART.read(stale)
+
+    async def servo_watchdog(self):
+        """Periodically flush the UART and ping a servo to detect bus lock-ups."""
+        print("[Magnus] Servo watchdog started")
+        while True:
+            await asyncio.sleep(10)
+            if dev.DevFlags.simulation_mode:
+                continue
+            try:
+                self.flush_servo_uart()
+                pos, spd, comm, err = self.feeder_servo.sts.ReadPosSpeed(self.feeder_servo.servo_id)
+                from stservo.stservo_def import COMM_SUCCESS
+                if comm != COMM_SUCCESS:
+                    print(f"[Magnus] Watchdog: servo ping failed ({comm}), flushing UART")
+                    self.flush_servo_uart()
+            except Exception as e:
+                print(f"[Magnus] Watchdog error: {e}, flushing UART")
+                self.flush_servo_uart()
+
+
     def set_sequence(self, sequence):
         self.sequence = sequence
         self.active_sequence = False
@@ -258,6 +287,8 @@ class Magnus:
         self._randomize_sequence = randomize_order
         self.feeder.set_ball_interval(feed_interval)
         self.active_sequence = True
+        if self._watchdog_task is None:
+            self._watchdog_task = asyncio.create_task(self.servo_watchdog())
         self._sequence_task = asyncio.create_task(self.run_sequence())
 
     def stop_sequence(self):
@@ -267,7 +298,8 @@ class Magnus:
         while self.active_sequence:
             print(f"[Magnus] running sequence step {self._sequence_idx + 1}/{len(self.sequence)}")
             self.set_settings(**self.sequence[self._sequence_idx], launcher_active=True, feeder_active=True)
-            await asyncio.sleep(0.5)
+            await asyncio.sleep(0.5)  # yield to event loop and let servo writes settle
+            self.flush_servo_uart()   # clear any stale response bytes before detector wait
             await self.wait_detector()
             if not self._randomize_sequence:
                 self._sequence_idx += 1
@@ -287,4 +319,4 @@ class Magnus:
         else: # no break
             print("[Magnus] detector did not finish within 30 seconds, stopping sequence")
             self.stop_sequence()
-            self.halt()
+            await self.halt()
