@@ -16,6 +16,8 @@ class STServo:
         ph.openPort()
         ph.setBaudRate(1000000)
         self._npos_rev = 4096
+        self.comm_failures = 0
+        self.consecutive_failures = 0
 
     def ping(self):
         sts_model_number, sts_comm_result, sts_error = self.sts.ping(self.servo_id)
