@@ -187,6 +187,15 @@ class Magnus:
             "aim": self.aimer.status(),
             "detector": self.detector.status(),
             "sequence": self.active_sequence,
+            "servo_comm_failures": {
+                name: servo.comm_failures
+                for name, servo in (
+                    ("feeder", self.feeder_servo),
+                    ("shaker", self.shaker_servo),
+                    ("vertical", self.vertical_servo),
+                    ("horizontal", self.horizontal_servo),
+                )
+            },
         }
         return status
 

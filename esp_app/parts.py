@@ -122,16 +122,14 @@ class Feeder:
     async def run(self):
         while True:
             await asyncio.sleep(self.wait)
-            if self.active:
-                speed = self.deg_ball / self.interval
-                if not DevFlags.simulation_mode:
-                    self.st_servo.move(0, speed)
-            else:
-                try:
-                    if not DevFlags.simulation_mode:
-                        self.st_servo.move(0, 0)
-                except:
-                    pass
+            speed = self.deg_ball / self.interval if self.active else 0
+            if DevFlags.simulation_mode:
+                continue
+            # Commands are re-sent every cycle, so a failed write is retried; never let it kill the task
+            try:
+                self.st_servo.move(0, speed)
+            except Exception as e:
+                print(f"[Feeder] servo comm error: {e}")
 
     def activate(self):
         print("[Feeder] Activate")
@@ -163,23 +161,28 @@ class Shaker:
         while True:
             await asyncio.sleep(0.1)
             if self.active:
+                await self._swing(180 + self.swing_angle, "back")
                 if self.active:
-                    print("[Shaker] moving back")
-                    if not DevFlags.simulation_mode:
-                        self.servo.move(180 + self.swing_angle, self.speed, self.acceleration)
-                    await asyncio.sleep(2.5*self.swing_angle/self.speed)
-                if self.active:
-                    print("[Shaker] moving forward")
-                    if not DevFlags.simulation_mode:
-                        self.servo.move(180 - self.swing_angle, self.speed, self.acceleration)
-                    await asyncio.sleep(2.5*self.swing_angle/self.speed)
-            else:
+                    await self._swing(180 - self.swing_angle, "forward")
+            elif not DevFlags.simulation_mode:
                 try:
-                    #print("[Shaker] stopping")
-                    if not DevFlags.simulation_mode:
-                        self.servo.move(180, self.speed, self.acceleration)
-                except:
-                    pass
+                    self.servo.move(180, self.speed, self.acceleration)
+                except Exception as e:
+                    print(f"[Shaker] servo comm error: {e}")
+
+    async def _swing(self, angle, label):
+        print(f"[Shaker] moving {label}")
+        if not DevFlags.simulation_mode:
+            try:
+                self.servo.move(angle, self.speed, self.acceleration)
+            except Exception as e:
+                print(f"[Shaker] servo comm error: {e}")
+                return
+        # Sleep in short steps so a halt is acted on promptly
+        for _ in range(int(25 * self.swing_angle / self.speed)):
+            if not self.active:
+                break
+            await asyncio.sleep(0.1)
 
 
 class ESC:

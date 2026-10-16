@@ -27,6 +27,20 @@ class STServo:
         if sts_error != 0:
             print("%s" % self.sts.getRxPacketError(sts_error))
 
+    def _check(self, comm_result):
+        """Track bus health; on failure reset the port state so the next call can succeed"""
+        if comm_result == COMM_SUCCESS:
+            self.consecutive_failures = 0
+            return
+        self.comm_failures += 1
+        self.consecutive_failures += 1
+        self.ph.is_using = False
+        try:
+            self.ph.clearPort()
+        except Exception:
+            pass
+        raise Exception(self.sts.getTxRxResult(comm_result))
+
     def _convert_to_pos(self, angle):
         return int(angle * self._npos_rev / 360)
 
@@ -65,18 +79,15 @@ class STServo:
         acc = self._convert_to_pos(acc) if acc is not None else self._convert_to_pos(self.default_acc)
 
         comm_result, error = self.sts.WritePosEx(self.servo_id, self._convert_to_pos(angle), speed, acc)
-        if comm_result != COMM_SUCCESS:
-            raise Exception(self.sts.getTxRxResult(comm_result))
+        self._check(comm_result)
 
     def set_servo_mode(self):
         comm_result, error = self.sts.Mode(self.servo_id, mode=0)
-        if comm_result != COMM_SUCCESS:
-            raise Exception(self.sts.getTxRxResult(comm_result))
+        self._check(comm_result)
 
     def set_wheel_mode_closed_loop(self):
         comm_result, error = self.sts.Mode(self.servo_id, mode=1)
-        if comm_result != COMM_SUCCESS:
-            raise Exception(self.sts.getTxRxResult(comm_result))
+        self._check(comm_result)
 
     # def set_wheel_mode_open_loop(self):
     #     comm_result, error = self.sts.Mode(self.servo_id, mode=2)
@@ -90,14 +101,12 @@ class STServo:
 
         comm_result, sts_error = self.sts.RegWritePosEx(self.servo_id, self._convert_to_pos(angle), speed, acc)
         print(comm_result, sts_error)
-        if comm_result != COMM_SUCCESS:
-            raise Exception(self.sts.getTxRxResult(comm_result))
+        self._check(comm_result)
 
     def program_speed(self, speed, acc=None):
         """Setups a speed, but does not execute it until action is called"""
         comm_result, error = self.sts.WriteSpec(self.servo_id, speed, acc)
-        if comm_result != COMM_SUCCESS:
-            raise Exception(self.sts.getTxRxResult(comm_result))
+        self._check(comm_result)
 
     def calibrate_middle(self):
         self.sts.CalibrateMiddle(self.servo_id)
@@ -108,13 +117,11 @@ class STServo:
 
     def _lock_eeprom(self):
         comm_result = self.sts.LockEprom(self.servo_id)
-        if comm_result != COMM_SUCCESS:
-            raise Exception(self.sts.getTxRxResult(comm_result))
+        self._check(comm_result)
 
     def _unlock_eeprom(self):
         comm_result = self.sts.unLockEprom(self.servo_id)
-        if comm_result != COMM_SUCCESS:
-            raise Exception(self.sts.getTxRxResult(comm_result))
+        self._check(comm_result)
 
 
 if __name__ == "__main__":
