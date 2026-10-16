@@ -37,6 +37,11 @@ machine_module.Pin.OUT = MockPin.OUT
 machine_module.Pin.IN = MockPin.IN
 machine_module.Pin.PULL_UP = MockPin.PULL_UP
 machine_module.PWM = create_pwm
+machine_module.ADC = MagicMock()
+machine_module.UART = MagicMock()
+
+espnow_module = type(sys)(name='espnow')
+network_module = type(sys)(name='network')
 
 # Create a real module for servo with the necessary components
 servo_module = type(sys)(name='servo')
@@ -56,6 +61,8 @@ dev_module.DevFlags = type('DevFlags', (), {'simulation_mode': False})
 sys.modules['machine'] = machine_module
 sys.modules['servo'] = servo_module
 sys.modules['dev'] = dev_module
+sys.modules['espnow'] = espnow_module
+sys.modules['network'] = network_module
 
 # Create other mock modules
 asyncio_mock = MagicMock()
@@ -445,6 +452,8 @@ def test_launcher_activate(launcher_setup):
     # Unpack the fixture
     launcher, _, mock_top_esc, mock_left_esc, mock_right_esc = launcher_setup
 
+    launcher.speed = 50
+
     # Test activate method
     launcher.activate()
 
@@ -463,10 +472,10 @@ def test_launcher_halt(launcher_setup):
     # Test halt method
     launcher.halt()
 
-    # Check all ESCs had set_speed called with 0
-    mock_top_esc.set_speed.assert_called_once_with(0, force=True)
-    mock_left_esc.set_speed.assert_called_once_with(0, force=True)
-    mock_right_esc.set_speed.assert_called_once_with(0, force=True)
+    # Check all ESCs were instructed to stop.
+    mock_top_esc.spin_down.assert_called_once()
+    mock_left_esc.spin_down.assert_called_once()
+    mock_right_esc.spin_down.assert_called_once()
 
     # Check active flag
     assert launcher.active is False

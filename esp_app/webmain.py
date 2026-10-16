@@ -58,7 +58,7 @@ async def main():
                 wait += 1
 
                 if value:
-                    magnus.calibrate()
+                    await magnus.calibrate()
                     if not dev.DevFlags.simulation_mode:
                         magnus.feeder_servo.set_wheel_mode_closed_loop()
                     calibrated = True

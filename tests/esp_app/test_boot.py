@@ -1,107 +1,90 @@
-import pytest
-import os
 import importlib.util
-from unittest.mock import patch, mock_open, MagicMock
+import os
+import sys
+from types import ModuleType
+from unittest.mock import MagicMock, call, patch
 
-# Mock the dependencies
-network_mock = MagicMock()
-secrets_mock = MagicMock()
-time_mock = MagicMock()
-dev_mock = MagicMock()
-json_mock = MagicMock()
+import pytest
 
-# Create a mock module for time that returns specific values for time.time()
-time_mock.time.side_effect = [0, 1]  # Default values, will be overridden in tests
 
-# Create a patch dictionary for sys.modules
-mock_modules = {
-    'network': network_mock,
-    'secrets': secrets_mock,
-    'time': time_mock,
-    'dev': dev_mock,
-    'json': json_mock
-}
+@pytest.fixture(scope="module")
+def boot_module():
+    machine = ModuleType("machine")
+    machine.UART = MagicMock()
+    machine.Pin = MagicMock()
 
-# Import the boot module code without executing it
-with patch.dict('sys.modules', mock_modules):
-    # Load the module
-    spec = importlib.util.spec_from_file_location('boot', '../../esp_app/boot.py')
-    boot = importlib.util.module_from_spec(spec)
+    network = ModuleType("network")
+    network.STA_IF = 0
+    network.WLAN = MagicMock()
 
-    # Save the original connect function
-    original_connect = boot.connect = lambda: None  # Placeholder
+    secrets = ModuleType("secrets")
+    secrets.Wifi = type("Wifi", (), {"ssid": "test-ssid", "password": "test-password"})
 
-    # Execute the module
-    spec.loader.exec_module(boot)
+    dev = ModuleType("dev")
+    dev.DevFlags = type("DevFlags", (), {"simulation_mode": False, "run_app": True})
 
-    # Get the exists function
-    exists = boot.exists
+    gc = ModuleType("gc")
+    gc.collect = MagicMock()
+    gc.mem_free = MagicMock(return_value=1000)
 
-    # Define our own connect function that uses the module's dependencies
-    def connect():
-        nic = network_mock.WLAN()
-        nic.active(True)
-        nic.connect(secrets_mock.Wifi.ssid, secrets_mock.Wifi.password)
-        nic.ifconfig(('10.0.0.47', '255.255.255.0', '10.0.0.138', '8.8.8.8'))
-        # Don't print these values as it calls the methods again
-        # print(f"{nic.isconnected()=}")
-        # print(f"{nic.ifconfig()=}")
-        start = time_mock.time()
-        while time_mock.time() - start < 10:
-            if nic.isconnected():
-                break
-        else:
-            raise RuntimeWarning("Could not connect to network")
+    magnus = ModuleType("magnus")
+    magnus._preallocated_uart = None
 
-@patch('os.stat')
-def test_exists_file_exists(mock_stat):
-    # Test when file exists
-    mock_stat.return_value = True
-    assert exists("test_file.txt") is True
-    mock_stat.assert_called_once_with("test_file.txt")
+    mocked_modules = {
+        "machine": machine,
+        "network": network,
+        "secrets": secrets,
+        "dev": dev,
+        "gc": gc,
+        "magnus": magnus,
+    }
+    path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "esp_app", "boot.py"))
+    spec = importlib.util.spec_from_file_location("boot_for_tests", path)
+    module = importlib.util.module_from_spec(spec)
+    with patch.dict(sys.modules, mocked_modules):
+        spec.loader.exec_module(module)
+    return module
 
-@patch('os.stat')
-def test_exists_file_does_not_exist(mock_stat):
-    # Test when file doesn't exist
-    mock_stat.side_effect = OSError()
-    assert exists("nonexistent_file.txt") is False
-    mock_stat.assert_called_once_with("nonexistent_file.txt")
 
-def test_connect_successful():
-    # Reset the mock
-    network_mock.reset_mock()
-    time_mock.reset_mock()
+def test_exists_file_exists(boot_module, monkeypatch):
+    monkeypatch.setattr(boot_module.os, "stat", lambda _path: object())
 
-    # Setup mocks
-    mock_nic = MagicMock()
-    network_mock.WLAN.return_value = mock_nic
-    mock_nic.isconnected.return_value = True
-    time_mock.time.side_effect = [0, 1]  # Start time and check time
+    assert boot_module.exists("present.txt") is True
 
-    # Call the function
-    connect()
 
-    # Verify the function behaved as expected
-    mock_nic.active.assert_called_once_with(True)
-    mock_nic.connect.assert_called_once()
-    mock_nic.ifconfig.assert_called_once_with(('10.0.0.47', '255.255.255.0', '10.0.0.138', '8.8.8.8'))
+def test_exists_file_does_not_exist(boot_module, monkeypatch):
+    def missing_file(_path):
+        raise OSError
 
-def test_connect_timeout():
-    # Reset the mock
-    network_mock.reset_mock()
-    time_mock.reset_mock()
+    monkeypatch.setattr(boot_module.os, "stat", missing_file)
 
-    # Setup mocks
-    mock_nic = MagicMock()
-    network_mock.WLAN.return_value = mock_nic
-    mock_nic.isconnected.return_value = False
-    time_mock.time.side_effect = [0, 11]  # Start time and check time (exceeds 10 second timeout)
+    assert boot_module.exists("missing.txt") is False
 
-    # Call the function and expect an exception
-    with pytest.raises(RuntimeWarning):
-        connect()
 
-    # Verify the function behaved as expected
-    mock_nic.active.assert_called_once_with(True)
-    mock_nic.connect.assert_called_once()
-    mock_nic.ifconfig.assert_called_once_with(('10.0.0.47', '255.255.255.0', '10.0.0.138', '8.8.8.8'))
+def test_connect_configures_and_connects_wifi(boot_module, monkeypatch):
+    nic = MagicMock()
+    nic.isconnected.side_effect = [False, True]
+    boot_module.network.WLAN.return_value = nic
+    times = iter((0, 1, 2))
+    monkeypatch.setattr(boot_module.time, "time", lambda: next(times))
+
+    boot_module.connect()
+
+    boot_module.network.WLAN.assert_called_once_with(boot_module.network.STA_IF)
+    nic.active.assert_called_once_with(True)
+    nic.connect.assert_called_once_with("test-ssid", "test-password")
+    nic.ifconfig.assert_has_calls([
+        call(("10.0.0.47", "255.255.255.0", "10.0.0.138", "8.8.8.8")),
+        call(),
+    ])
+
+
+def test_connect_times_out(boot_module, monkeypatch):
+    nic = MagicMock()
+    nic.isconnected.return_value = False
+    boot_module.network.WLAN.return_value = nic
+    times = iter((0, 11))
+    monkeypatch.setattr(boot_module.time, "time", lambda: next(times))
+
+    with pytest.raises(RuntimeWarning, match="Could not connect"):
+        boot_module.connect()

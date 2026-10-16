@@ -78,6 +78,7 @@ class Magnus:
         self.active_sequence = False
         self._randomize_sequence = False
         self._sequence_idx = 0
+        self._sequence_generation = 0
         self._sequence_task = None
         self._watchdog_task = None
 
@@ -125,13 +126,15 @@ class Magnus:
             self._watchdog_task = asyncio.create_task(self.servo_watchdog())
         print("[Magnus] Remote enabled")
 
-    def calibrate(self):
+    async def calibrate(self):
         self.launcher.set_speed("all", 100, force=True)
-        time.sleep(3)
-        self.launcher.halt()
-        self.launcher.set_speed("all", 0)
+        try:
+            await asyncio.sleep(3)
+        finally:
+            self.launcher.halt()
+            self.launcher.set_speed("all", 0)
         print("[Magnus] calibrated")
-        time.sleep(1)
+        await asyncio.sleep(1)
 
     def interval_up(self, step=0.25):
         """Increase feed interval
@@ -280,43 +283,70 @@ class Magnus:
 
 
     def set_sequence(self, sequence):
+        if self.active_sequence:
+            self.stop_sequence()
         self.sequence = sequence
-        self.active_sequence = False
+        self._sequence_idx = 0
 
     def start_sequence(self, randomize_order=False, feed_interval=1):
+        if not self.sequence:
+            raise ValueError("Cannot start a drill with an empty sequence")
+        if self._sequence_task is not None:
+            raise RuntimeError("A drill sequence is already running or stopping")
+
         self._randomize_sequence = randomize_order
         self.feeder.set_ball_interval(feed_interval)
-        self.active_sequence = True
         if self._watchdog_task is None:
             self._watchdog_task = asyncio.create_task(self.servo_watchdog())
-        self._sequence_task = asyncio.create_task(self.run_sequence())
+        self._sequence_generation += 1
+        generation = self._sequence_generation
+        self._sequence_task = asyncio.create_task(self.run_sequence(generation))
+        self.active_sequence = True
 
     def stop_sequence(self):
         self.active_sequence = False
+        self._sequence_generation += 1
+        task = self._sequence_task
+        self._sequence_task = None
+        if task is not None:
+            task.cancel()
+        self.launcher.halt()
+        self.feeder.halt()
 
-    async def run_sequence(self):
-        while self.active_sequence:
-            print(f"[Magnus] running sequence step {self._sequence_idx + 1}/{len(self.sequence)}")
-            self.set_settings(**self.sequence[self._sequence_idx], launcher_active=True, feeder_active=True)
-            await asyncio.sleep(0.5)  # yield to event loop and let servo writes settle
-            self.flush_servo_uart()   # clear any stale response bytes before detector wait
-            await self.wait_detector()
-            if not self._randomize_sequence:
-                self._sequence_idx += 1
-                if self._sequence_idx >= len(self.sequence):
-                    self._sequence_idx = 0
-            else:
-                self._sequence_idx = random.randint(0, len(self.sequence) - 1)
+    async def run_sequence(self, generation):
+        try:
+            while self.active_sequence and generation == self._sequence_generation:
+                print(f"[Magnus] running sequence step {self._sequence_idx + 1}/{len(self.sequence)}")
+                self.set_settings(**self.sequence[self._sequence_idx], launcher_active=True, feeder_active=True)
+                await asyncio.sleep(0.5)  # yield to event loop and let servo writes settle
+                if not self.active_sequence or generation != self._sequence_generation:
+                    break
+                self.flush_servo_uart()   # clear any stale response bytes before detector wait
+                if not await self.wait_detector(generation):
+                    break
+                if not self._randomize_sequence:
+                    self._sequence_idx += 1
+                    if self._sequence_idx >= len(self.sequence):
+                        self._sequence_idx = 0
+                else:
+                    self._sequence_idx = random.randint(0, len(self.sequence) - 1)
+        finally:
+            if generation == self._sequence_generation:
+                self.active_sequence = False
+                self.launcher.halt()
+                self._sequence_task = None
 
-    async def wait_detector(self):
+    async def wait_detector(self, generation):
         start = time.time()
-        while time.time() - start < 30:
+        while self.active_sequence and generation == self._sequence_generation and time.time() - start < 30:
             await asyncio.sleep_ms(100)
+            if not self.active_sequence or generation != self._sequence_generation:
+                return False
             if self.detector.status()["elapsed"] < 0.2:
                 print("[Magnus] Detected ball, continuing sequence")
-                break
+                return True
 
-        else: # no break
+        if self.active_sequence and generation == self._sequence_generation:
             print("[Magnus] detector did not finish within 30 seconds, stopping sequence")
-            self.stop_sequence()
-            await self.halt()
+            self.active_sequence = False
+        return False

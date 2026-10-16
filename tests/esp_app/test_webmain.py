@@ -1,381 +1,146 @@
+import importlib.util
+import os
+import sys
+from types import ModuleType
+from unittest.mock import MagicMock, patch
+
 import pytest
-from unittest.mock import patch, MagicMock, call
-
-# Skip all tests in this module
-pytestmark = pytest.mark.skip(reason="Microdot module not available")
-
-# Create a mock for the parts module
-parts_mock = MagicMock()
-parts_mock.Feeder = MagicMock()
-parts_mock.Launcher = MagicMock()
-parts_mock.Aimer = MagicMock()
-parts_mock.Shaker = MagicMock()
-
-# Create a mock for the microdot module
-microdot_mock = MagicMock()
-microdot_mock.Microdot = MagicMock()
-microdot_mock.Response = MagicMock()
-
-# Create a mock for the ujrpc module
-ujrpc_mock = MagicMock()
-ujrpc_mock.JRPCService = MagicMock()
-
-# Mock the dependencies
-with patch.dict('sys.modules', {
-    'machine': MagicMock(),
-    'microdot': microdot_mock,
-    'ujrpc': ujrpc_mock,
-    'asyncio': MagicMock(),
-    'time': MagicMock(),
-    'math': MagicMock(),
-    'stservo_wrapper': MagicMock(),
-    'stservo.port_handler': MagicMock(),
-    'dev': MagicMock(),
-    'secrets': MagicMock(),
-    'parts': parts_mock
-}):
-    # Import the module to test
-    from esp_app.webmain import (
-        calibrate, activate, halt,
-        status, feed_one, calibrate_aim_zero, sync_settings,
-        reset, interrupt, enable_simulation, disable_simulation
-    )
-    from magnus import UsedPins
-    from parts import Supply
 
 
-def test_sanity_check_success():
-    # Test when all pins are unique
-    original_dict = UsedPins.__dict__.copy()
+@pytest.fixture(scope="module")
+def webmain_module():
+    machine = ModuleType("machine")
+    machine.reset = MagicMock()
 
-    # Create a temporary class with unique pins
-    class TestPins:
-        PIN1 = 1
-        PIN2 = 2
-        PIN3 = 3
+    network = ModuleType("network")
+    network.STA_IF = 0
+    nic = MagicMock()
+    nic.isconnected.return_value = True
+    nic.config.return_value = 6
+    network.WLAN = MagicMock(return_value=nic)
 
-    # Replace UsedPins.__dict__ with our test class
-    with patch.object(UsedPins, '__dict__', TestPins.__dict__):
-        # Should not raise an exception
-        UsedPins.sanity_check()
+    microdot = ModuleType("microdot")
 
-def test_sanity_check_failure():
-    # Test when pins are duplicated
-    original_dict = UsedPins.__dict__.copy()
+    class FakeResponse:
+        default_content_type = None
 
-    # Create a temporary class with duplicate pins
-    class TestPins:
-        PIN1 = 1
-        PIN2 = 1  # Duplicate
-        PIN3 = 3
+    class FakeMicrodot:
+        def get(self, *_args, **_kwargs):
+            return lambda fn: fn
 
-    # Replace UsedPins.__dict__ with our test class
-    with patch.object(UsedPins, '__dict__', TestPins.__dict__):
-        # Should raise ValueError
-        with pytest.raises(ValueError):
-            UsedPins.sanity_check()
+        def route(self, *_args, **_kwargs):
+            return lambda fn: fn
 
-@pytest.fixture
-def supply_setup():
-    # Mock ADC and Pin
-    adc_mock = MagicMock()
-    pin_mock = MagicMock()
+        def shutdown(self):
+            pass
 
-    # Patch ADC and Pin
-    with patch('esp_app.webmain.ADC', return_value=adc_mock) as mock_adc, \
-         patch('esp_app.webmain.Pin', return_value=pin_mock) as mock_pin, \
-         patch('esp_app.webmain.DevFlags') as mock_dev_flags:
+    microdot.Response = FakeResponse
+    microdot.Microdot = FakeMicrodot
 
-        # Set default simulation mode
-        mock_dev_flags.simulation_mode = False
+    class FakeJRPCService:
+        def __init__(self, api_version):
+            self.api_version = api_version
+            self.debug = False
+            self.methods = {}
 
-        # Create Supply instance
-        supply = Supply()
+        def fn(self, name=None):
+            def register(fn):
+                self.methods[name or fn.__name__] = fn
+                return fn
+            return register
 
-        yield supply, adc_mock, pin_mock, mock_dev_flags
+        def handle_rpc(self, request):
+            return request
 
-def test_esc_alive_normal_mode_alive(supply_setup):
-    # Unpack the fixture
-    supply, adc_mock, pin_mock, mock_dev_flags = supply_setup
+    ujrpc = ModuleType("ujrpc")
+    ujrpc.JRPCService = FakeJRPCService
 
-    # Test when ESC is alive in normal mode
-    adc_mock.read.return_value = 4000  # Above threshold
+    dev = ModuleType("dev")
+    dev.DevFlags = type("DevFlags", (), {"debug": False, "simulation_mode": False})
 
-    assert supply.esc_alive() is True
-    adc_mock.read.assert_called_once()
+    gc = ModuleType("gc")
+    gc.collect = MagicMock()
+    gc.mem_free = MagicMock(return_value=1000)
 
-def test_esc_alive_normal_mode_not_alive(supply_setup):
-    # Unpack the fixture
-    supply, adc_mock, pin_mock, mock_dev_flags = supply_setup
+    secrets = ModuleType("secrets")
+    secrets.Wifi = type("Wifi", (), {"ssid": "test-ssid", "password": "test-password"})
 
-    # Test when ESC is not alive in normal mode
-    adc_mock.read.return_value = 3000  # Below threshold
+    magnus_module = ModuleType("magnus")
+    magnus_module.UsedPins = type("UsedPins", (), {"sanity_check": classmethod(lambda cls: None)})
+    magnus_instance = MagicMock()
+    magnus_module.Magnus = MagicMock(return_value=magnus_instance)
 
-    assert supply.esc_alive() is False
-    adc_mock.read.assert_called_once()
-
-def test_esc_alive_simulation_mode(supply_setup):
-    # Unpack the fixture
-    supply, adc_mock, pin_mock, mock_dev_flags = supply_setup
-
-    # Test in simulation mode
-    mock_dev_flags.simulation_mode = True
-
-    assert supply.esc_alive() is True
-    adc_mock.read.assert_not_called()
-
-def test_supply_status(supply_setup):
-    # Unpack the fixture
-    supply, adc_mock, pin_mock, mock_dev_flags = supply_setup
-
-    # Test status method
-    adc_mock.read.return_value = 4000  # Above threshold
-
-    result = supply.status()
-
-    assert result == {"esc_alive": True}
-    adc_mock.read.assert_called_once()
-
-@pytest.fixture
-def rpc_setup():
-    # Mock dependencies
-    launcher_mock = MagicMock()
-    feeder_mock = MagicMock()
-    aimer_mock = MagicMock()
-    supply_mock = MagicMock()
-    request_mock = MagicMock()
-
-    # Patch the global objects
-    with patch('esp_app.webmain.launcher', launcher_mock), \
-         patch('esp_app.webmain.feeder', feeder_mock), \
-         patch('esp_app.webmain.aimer', aimer_mock), \
-         patch('esp_app.webmain.supply', supply_mock):
-
-        yield launcher_mock, feeder_mock, aimer_mock, supply_mock, request_mock
-
-def test_rpc_status(rpc_setup):
-    # Unpack the fixture
-    launcher_mock, feeder_mock, aimer_mock, supply_mock, request_mock = rpc_setup
-
-    # Setup mocks
-    supply_mock.status.return_value = {"esc_alive": True}
-    launcher_mock.status.return_value = {"active": False, "speed": 0}
-    feeder_mock.status.return_value = {"active": False, "interval": 4}
-    aimer_mock.status.return_value = {"tilt": 0, "pan": 0}
-
-    # Call status function
-    result = status(request_mock)
-
-    # Check result
-    expected = {
-        "supply": {"esc_alive": True},
-        "launcher": {"active": False, "speed": 0},
-        "feeder": {"active": False, "interval": 4},
-        "aim": {"tilt": 0, "pan": 0}
+    mocked_modules = {
+        "machine": machine,
+        "network": network,
+        "microdot": microdot,
+        "ujrpc": ujrpc,
+        "dev": dev,
+        "gc": gc,
+        "secrets": secrets,
+        "magnus": magnus_module,
     }
-    assert result == expected
+    path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "esp_app", "webmain.py"))
+    spec = importlib.util.spec_from_file_location("webmain_for_tests", path)
+    module = importlib.util.module_from_spec(spec)
+    with patch.dict(sys.modules, mocked_modules):
+        spec.loader.exec_module(module)
+    return module, magnus_instance
 
-def test_feed_one_launcher_active(rpc_setup):
-    # Unpack the fixture
-    launcher_mock, feeder_mock, aimer_mock, supply_mock, request_mock = rpc_setup
 
-    # Setup mocks
-    launcher_mock.active = True
+def test_rpc_methods_are_registered(webmain_module):
+    module, _ = webmain_module
 
-    # Call feed_one function
-    feed_one(request_mock)
+    assert {"status", "set_aim", "set_launcher", "start_sequence", "stop_sequence"} <= set(module.jrpc.methods)
 
-    # Check feeder.feed_one was called
-    feeder_mock.feed_one.assert_called_once()
 
-def test_feed_one_launcher_inactive(rpc_setup):
-    # Unpack the fixture
-    launcher_mock, feeder_mock, aimer_mock, supply_mock, request_mock = rpc_setup
+def test_set_aim_preserves_omitted_axis(webmain_module):
+    module, magnus = webmain_module
+    magnus.aimer.status.return_value = {"tilt": 8, "pan": -3}
 
-    # Setup mocks
-    launcher_mock.active = False
+    module.set_aim(None, tilt=12)
 
-    # Call feed_one function
-    feed_one(request_mock)
+    magnus.aimer.aim.assert_called_once_with(vangle=12, hangle=-3)
 
-    # Check feeder.feed_one was not called
-    feeder_mock.feed_one.assert_not_called()
 
-def test_calibrate_aim_zero_success(rpc_setup):
-    # Unpack the fixture
-    launcher_mock, feeder_mock, aimer_mock, supply_mock, request_mock = rpc_setup
-
-    # Setup mocks
-    aimer_mock.calibrate.return_value = True
-
-    # Call calibrate_aim_zero function
-    result = calibrate_aim_zero(request_mock)
-
-    # Check result
-    assert result is True
-    aimer_mock.calibrate.assert_called_once()
-
-def test_calibrate_aim_zero_failure(rpc_setup):
-    # Unpack the fixture
-    launcher_mock, feeder_mock, aimer_mock, supply_mock, request_mock = rpc_setup
-
-    # Setup mocks
-    aimer_mock.calibrate.side_effect = Exception("Test exception")
-
-    # Call calibrate_aim_zero function
-    result = calibrate_aim_zero(request_mock)
-
-    # Check result
-    assert result is False
-    aimer_mock.calibrate.assert_called_once()
-
-@patch('esp_app.webmain.math')
-@patch('esp_app.webmain.pin')
-def test_sync_settings(mock_pin, mock_math, rpc_setup):
-    # Unpack the fixture
-    launcher_mock, feeder_mock, aimer_mock, supply_mock, request_mock = rpc_setup
-
-    # Setup mocks
-    mock_math.cos.return_value = 0.866  # cos(30°)
-    mock_math.sin.return_value = 0.5    # sin(30°)
-    mock_math.radians.return_value = 0.523  # 30° in radians
-
-    # Create settings
-    settings = {
-        "feed_interval": 3,
-        "tilt": 10,
-        "pan": 5,
-        "speed": 50,
-        "spin_angle": 30,
-        "spin_strength": 80,
-        "shaker": 100,
-        "launcher_active": True,
-        "feeder_active": True
+def test_set_launcher_converts_spin_and_preserves_active_state(webmain_module):
+    module, magnus = webmain_module
+    magnus.launcher.status.return_value = {
+        "speed": 40,
+        "spin_angle": 0,
+        "spin_strength": 0,
+        "active": True,
     }
 
-    # Call sync_settings function
-    sync_settings(request_mock, settings)
+    module.set_launcher(None, speed=60, spin_angle=90, spin_strength=50)
 
-    # Check feeder settings
-    feeder_mock.set_ball_interval.assert_called_once_with(3)
+    magnus.launcher.configure.assert_called_once()
+    kwargs = magnus.launcher.configure.call_args.kwargs
+    assert kwargs["speed"] == 60
+    assert kwargs["topspin"] == pytest.approx(0)
+    assert kwargs["sidespin"] == pytest.approx(0.5)
+    magnus.launcher.activate.assert_called_once()
 
-    # Check aimer settings
-    aimer_mock.aim.assert_called_once_with(10, 5)
 
-    # Check launcher settings
-    topspin = 0.866 * 80 / 100  # cos(30°) * spin_strength / 100
-    sidespin = 0.5 * 80 / 100   # sin(30°) * spin_strength / 100
-    launcher_mock.configure.assert_called_once_with(speed=50, topspin=topspin, sidespin=sidespin)
+def test_start_sequence_forwards_settings(webmain_module):
+    module, magnus = webmain_module
+    settings = {"randomize_order": True, "feed_interval": 2}
 
-    # Check shaker settings
-    from esp_app.webmain import shaker
-    assert shaker.move_us == 100
+    module.start_sequence(None, settings)
 
-    # Check launcher activation
-    mock_pin.on.assert_called_once()
-    launcher_mock.activate.assert_called_once()
+    magnus.start_sequence.assert_called_once_with(randomize_order=True, feed_interval=2)
 
-    # Check feeder activation
-    launcher_mock.active = True
-    launcher_mock.speed = 50
-    feeder_mock.activate.assert_called_once()
 
-@patch('esp_app.webmain.machine')
-def test_reset(mock_machine, rpc_setup):
-    # Unpack the fixture
-    launcher_mock, feeder_mock, aimer_mock, supply_mock, request_mock = rpc_setup
+def test_stop_sequence_stops_sequence(webmain_module):
+    module, magnus = webmain_module
 
-    # Call reset function
-    reset(request_mock)
+    module.stop_sequence(None)
 
-    # Check machine.reset was called
-    mock_machine.reset.assert_called_once()
+    magnus.stop_sequence.assert_called_once_with()
 
-@patch('esp_app.webmain.esp_app')
-def test_interrupt(mock_esp_app, rpc_setup):
-    # Unpack the fixture
-    launcher_mock, feeder_mock, aimer_mock, supply_mock, request_mock = rpc_setup
 
-    # Call interrupt function
-    interrupt(request_mock)
+def test_status_returns_current_robot_status(webmain_module):
+    module, magnus = webmain_module
+    magnus.status.return_value = {"launcher": {"active": True}}
 
-    # Check esp_app.shutdown was called
-    mock_esp_app.shutdown.assert_called_once()
-
-@patch('esp_app.webmain.dev.DevFlags')
-def test_enable_simulation(mock_dev_flags, rpc_setup):
-    # Unpack the fixture
-    launcher_mock, feeder_mock, aimer_mock, supply_mock, request_mock = rpc_setup
-
-    # Call enable_simulation function
-    enable_simulation(request_mock)
-
-    # Check DevFlags.simulation_mode was set to True
-    assert mock_dev_flags.simulation_mode is True
-
-@patch('esp_app.webmain.dev.DevFlags')
-def test_disable_simulation(mock_dev_flags, rpc_setup):
-    # Unpack the fixture
-    launcher_mock, feeder_mock, aimer_mock, supply_mock, request_mock = rpc_setup
-
-    # Call disable_simulation function
-    disable_simulation(request_mock)
-
-    # Check DevFlags.simulation_mode was set to False
-    assert mock_dev_flags.simulation_mode is False
-
-@pytest.fixture
-def utility_setup():
-    # Mock dependencies
-    launcher_mock = MagicMock()
-    feeder_mock = MagicMock()
-
-    # Patch time
-    with patch('esp_app.webmain.time') as mock_time:
-        yield launcher_mock, feeder_mock, mock_time
-
-def test_calibrate(utility_setup):
-    # Unpack the fixture
-    launcher_mock, feeder_mock, mock_time = utility_setup
-
-    # Call calibrate function
-    calibrate(launcher_mock)
-
-    # Check launcher methods were called
-    launcher_mock.set_speed.assert_has_calls([
-        call("all", 100, force=True),
-        call("all", 0)
-    ])
-    launcher_mock.halt.assert_called_once()
-
-    # Check time.sleep was called
-    mock_time.sleep.assert_has_calls([
-        call(3),
-        call(1)
-    ])
-
-@pytest.mark.asyncio
-@patch('esp_app.webmain.asyncio')
-async def test_activate(mock_asyncio, utility_setup):
-    # Unpack the fixture
-    launcher_mock, feeder_mock, mock_time = utility_setup
-
-    # Call activate function
-    await activate(launcher_mock, feeder_mock)
-
-    # Check launcher and feeder were activated
-    launcher_mock.activate.assert_called_once()
-    feeder_mock.activate.assert_called_once()
-
-@pytest.mark.asyncio
-@patch('esp_app.webmain.asyncio')
-async def test_halt(mock_asyncio, utility_setup):
-    # Unpack the fixture
-    launcher_mock, feeder_mock, mock_time = utility_setup
-
-    # Call halt function
-    await halt(launcher_mock, feeder_mock)
-
-    # Check launcher and feeder were halted
-    launcher_mock.halt.assert_called_once()
-    feeder_mock.halt.assert_called_once()
+    assert module.status(None) == {"launcher": {"active": True}}
