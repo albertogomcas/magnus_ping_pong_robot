@@ -9,9 +9,20 @@ import math
 from stservo_wrapper import STServo
 from stservo.port_handler import PortHandlerMicroPython
 import random
+try:
+    from .drill_store import DrillStore
+except ImportError:
+    from drill_store import DrillStore
 
 # Pre-allocated UART instance - set by boot.py before heap gets fragmented
 _preallocated_uart = None
+
+
+def _remote_text(value, limit):
+    return "".join(
+        char if 32 <= ord(char) <= 126 and char not in '"\\' else "?"
+        for char in str(value)[:limit]
+    )
 
 
 class UsedPins:
@@ -77,9 +88,15 @@ class Magnus:
         self.sequence = []
         self.active_sequence = False
         self._randomize_sequence = False
+        self._loop_sequence = True
         self._sequence_idx = 0
+        self._sequence_order = []
+        self._sequence_generation = 0
         self._sequence_task = None
         self._watchdog_task = None
+        self.drill_store = DrillStore()
+        self.sequence_draft = []
+        self.remote_message = ""
 
         # Remote will be initialized after WiFi connects
         self.remote = None
@@ -119,6 +136,37 @@ class Magnus:
         self.remote.bind("decrease_spin", self.launcher.decrease_spin)
         self.remote.bind("interval_up", self.interval_up)
         self.remote.bind("interval_down", self.interval_down)
+
+        for slot in range(1, 10):
+            slot_text = str(slot)
+            self.remote.bind(
+                "apply_preset_" + slot_text,
+                lambda slot=slot_text: self.apply_preset(slot),
+            )
+            self.remote.bind(
+                "save_preset_" + slot_text,
+                lambda slot=slot_text: self.save_preset(slot),
+            )
+            self.remote.bind(
+                "append_preset_" + slot_text,
+                lambda slot=slot_text: self.append_preset(slot),
+            )
+            self.remote.bind(
+                "save_sequence_" + slot_text,
+                lambda slot=slot_text: self.save_sequence(slot),
+            )
+            self.remote.bind(
+                "start_sequence_" + slot_text,
+                lambda slot=slot_text: self.start_saved_sequence(slot),
+            )
+            self.remote.bind(
+                "start_random_sequence_" + slot_text,
+                lambda slot=slot_text: self.start_saved_sequence(slot, randomize_order=True),
+            )
+        self.remote.bind("remove_sequence_step", self.remove_sequence_step)
+        self.remote.bind("clear_sequence_draft", self.clear_sequence_draft)
+        self.remote.bind("toggle_sequence_loop", self.toggle_sequence_loop)
+        self.remote.bind("stop_sequence", self.stop_sequence)
 
         self.remote.set_status_callback(self.remote_status)
         if self._watchdog_task is None:
@@ -202,19 +250,28 @@ class Magnus:
     def remote_status(self):
         """Return flattened status for remote OLED display"""
         launcher = self.launcher.status()
-        aim = self.aimer.status()
+        try:
+            aim = self.aimer.status()
+            aim_error = ""
+        except RuntimeError as exc:
+            aim = {"tilt": None, "pan": None}
+            aim_error = str(exc)
         feeder = self.feeder.status()
 
         return {
-            'launcher_active': launcher['active'],
-            'speed': int(launcher['speed']),
-            'topspin': launcher['topspin'],
-            'sidespin': launcher['sidespin'],
-            'spin_angle': int(launcher['spin_angle']),
-            'spin_strength': int(launcher['spin_strength']),
-            'tilt': aim['tilt'],
-            'pan': aim['pan'],
-            'interval': feeder['interval'],
+            'a': launcher['active'],
+            's': int(launcher['speed']),
+            'sa': int(launcher['spin_angle']),
+            'ss': int(launcher['spin_strength']),
+            't': round(aim['tilt'], 1) if aim['tilt'] is not None else None,
+            'p': round(aim['pan'], 1) if aim['pan'] is not None else None,
+            'i': round(feeder['interval'], 2),
+            'q': self.active_sequence,
+            'd': len(self.sequence_draft),
+            'l': self._loop_sequence,
+            'm': _remote_text(self.remote_message, 16),
+            'e': _remote_text((self.remote.last_error if self.remote else "") or aim_error, 48),
+            'n': self.remote.error_id if self.remote else 0,
         }
 
     def set_settings(self, **settings):
@@ -289,43 +346,165 @@ class Magnus:
 
 
     def set_sequence(self, sequence):
+        if not isinstance(sequence, list) or not sequence:
+            raise ValueError("A drill sequence must contain at least one preset")
+        if self.active_sequence:
+            self.stop_sequence()
         self.sequence = sequence
-        self.active_sequence = False
+        self._sequence_order = list(range(len(sequence)))
+        self._sequence_idx = 0
 
-    def start_sequence(self, randomize_order=False, feed_interval=1):
+    def start_sequence(self, randomize_order=False, feed_interval=1, loop=True):
+        if not self.sequence:
+            raise ValueError("Cannot start a drill with an empty sequence")
+        if self._sequence_task is not None:
+            raise RuntimeError("A drill sequence is already running or stopping")
         self._randomize_sequence = randomize_order
+        self._loop_sequence = loop
+        self._sequence_order = list(range(len(self.sequence)))
+        if self._randomize_sequence:
+            random.shuffle(self._sequence_order)
+        self._sequence_idx = 0
         self.feeder.set_ball_interval(feed_interval)
-        self.active_sequence = True
         if self._watchdog_task is None:
             self._watchdog_task = asyncio.create_task(self.servo_watchdog())
-        self._sequence_task = asyncio.create_task(self.run_sequence())
+        self._sequence_generation += 1
+        generation = self._sequence_generation
+        self._sequence_task = asyncio.create_task(self.run_sequence(generation))
+        self.active_sequence = True
 
     def stop_sequence(self):
         self.active_sequence = False
+        self._sequence_generation += 1
+        task = self._sequence_task
+        self._sequence_task = None
+        if task is not None:
+            task.cancel()
+        self.launcher.halt()
+        self.feeder.halt()
 
-    async def run_sequence(self):
-        while self.active_sequence:
-            print(f"[Magnus] running sequence step {self._sequence_idx + 1}/{len(self.sequence)}")
-            self.set_settings(**self.sequence[self._sequence_idx], launcher_active=True, feeder_active=True)
-            await asyncio.sleep(0.5)  # yield to event loop and let servo writes settle
-            self.flush_servo_uart()   # clear any stale response bytes before detector wait
-            await self.wait_detector()
-            if not self._randomize_sequence:
+    async def run_sequence(self, generation):
+        try:
+            while self.active_sequence and generation == self._sequence_generation:
+                print(f"[Magnus] running sequence step {self._sequence_idx + 1}/{len(self.sequence)}")
+                preset_index = self._sequence_order[self._sequence_idx]
+                step_settings = {
+                    key: value
+                    for key, value in self.sequence[preset_index].items()
+                    if key != "feed_interval"
+                }
+                detector_count = self.detector.status()["count"]
+                self.set_settings(**step_settings, launcher_active=True, feeder_active=True)
+                step_started = time.ticks_ms()
+                await asyncio.sleep(0.5)
+                if not self.active_sequence or generation != self._sequence_generation:
+                    break
+                self.flush_servo_uart()
+                if not await self.wait_detector(generation, detector_count, step_started):
+                    break
                 self._sequence_idx += 1
-                if self._sequence_idx >= len(self.sequence):
-                    self._sequence_idx = 0
-            else:
-                self._sequence_idx = random.randint(0, len(self.sequence) - 1)
+                if self._sequence_idx >= len(self._sequence_order):
+                    if self._loop_sequence:
+                        self._sequence_idx = 0
+                        if self._randomize_sequence:
+                            random.shuffle(self._sequence_order)
+                    else:
+                        break
+        finally:
+            if generation == self._sequence_generation:
+                self.active_sequence = False
+                self.launcher.halt()
+                self.feeder.halt()
+                self._sequence_task = None
 
-    async def wait_detector(self):
-        start = time.time()
-        while time.time() - start < 30:
-            await asyncio.sleep_ms(100)
-            if self.detector.status()["elapsed"] < 0.2:
+    async def wait_detector(self, generation, detector_count, step_started):
+        while self.active_sequence and generation == self._sequence_generation:
+            if self.detector.status()["count"] != detector_count:
                 print("[Magnus] Detected ball, continuing sequence")
-                break
+                return True
+            remaining_ms = int(self.feeder.interval * 1000) - time.ticks_diff(time.ticks_ms(), step_started)
+            if remaining_ms <= 0:
+                print("[Magnus] Feed interval elapsed, continuing sequence without detection")
+                return True
+            await asyncio.sleep(min(0.1, remaining_ms / 1000))
+        return False
 
-        else: # no break
-            print("[Magnus] detector did not finish within 30 seconds, stopping sequence")
+    def save_preset(self, slot):
+        launcher = self.launcher.status()
+        aimer = self.aimer.status()
+        feeder = self.feeder.status()
+        current = self.drill_store.list_presets().get(str(slot), {})
+        name = current.get("name", "Preset " + str(slot))
+        preset = self.drill_store.save_preset(
+            slot,
+            name,
+            {
+                "speed": launcher["speed"],
+                "spin_angle": launcher["spin_angle"],
+                "spin_strength": launcher["spin_strength"],
+                "pan": aimer["pan"],
+                "tilt": aimer["tilt"],
+                "feed_interval": feeder["interval"],
+            },
+        )
+        self.remote_message = "Saved P" + str(slot) + ": " + preset["name"]
+        return preset
+
+    def apply_preset(self, slot):
+        preset = self.drill_store.get_preset(slot)
+        if self.active_sequence:
             self.stop_sequence()
-            await self.halt()
+        self.set_settings(
+            **preset["settings"],
+            launcher_active=False,
+            feeder_active=False,
+        )
+        self.remote_message = "Loaded P" + str(slot) + ": " + preset["name"]
+        return preset
+
+    def append_preset(self, slot):
+        self.drill_store.get_preset(slot)
+        if len(self.sequence_draft) >= 9:
+            raise ValueError("A drill can contain at most 9 preset steps")
+        self.sequence_draft.append(str(slot))
+        self.remote_message = "Added P" + str(slot) + " to drill"
+        return len(self.sequence_draft)
+
+    def remove_sequence_step(self):
+        if self.sequence_draft:
+            self.sequence_draft.pop()
+        self.remote_message = "Drill steps: " + str(len(self.sequence_draft))
+        return len(self.sequence_draft)
+
+    def clear_sequence_draft(self):
+        self.sequence_draft = []
+        self.remote_message = "Drill draft cleared"
+
+    def save_sequence(self, slot):
+        current = self.drill_store.list_sequences().get(str(slot), {})
+        name = current.get("name", "Drill " + str(slot))
+        sequence = self.drill_store.save_sequence(
+            slot,
+            name,
+            self.sequence_draft,
+        )
+        self.remote_message = "Saved D" + str(slot) + " (" + str(len(self.sequence_draft)) + ")"
+        return sequence
+
+    def start_saved_sequence(self, slot, randomize_order=False, loop=None, feed_interval=None):
+        sequence = self.drill_store.get_sequence(slot)
+        if loop is not None:
+            self._loop_sequence = loop
+        self.set_sequence(sequence)
+        self.start_sequence(
+            randomize_order=randomize_order,
+            feed_interval=self.feeder.interval if feed_interval is None else feed_interval,
+            loop=self._loop_sequence,
+        )
+        self.remote_message = "Running D" + str(slot)
+        return True
+
+    def toggle_sequence_loop(self):
+        self._loop_sequence = not self._loop_sequence
+        self.remote_message = "Drill loop " + ("ON" if self._loop_sequence else "OFF")
+        return self._loop_sequence

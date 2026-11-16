@@ -70,3 +70,11 @@ def test_search_skips_unsupported_channel():
     sender.probe_status()
     sender.probe_status()
     assert channels == [13]
+
+
+def test_send_reports_missing_acknowledgement():
+    sender_class = load_sender()
+    sender = sender_class.__new__(sender_class)
+    sender.receiver_mac = b"robot"
+    sender.esp = SimpleNamespace(send=lambda *_: False)
+    assert sender.send({"type": "key_press"}) is False

@@ -15,8 +15,8 @@ class Aimer:
 
         self.vgain = -4
         self.hgain = -4
-        self.vspeed = 50
-        self.hspeed = 50
+        self.vspeed = 100
+        self.hspeed = 100
 
         self.vlim_min = -25
         self.vlim_max = 35
@@ -40,17 +40,19 @@ class Aimer:
 
 
     def status(self):
-        try:
-            if not DevFlags.simulation_mode:
+        if not DevFlags.simulation_mode:
+            try:
                 vangle_raw = self.vservo.status()["angle"]
+            except Exception as exc:
+                print("[Aimer] Vertical servo feedback error:", exc)
+                raise RuntimeError("Vertical servo: " + str(exc).replace("[TxRxResult] ", ""))
+            try:
                 hangle_raw = self.hservo.status()["angle"]
-            else:
-                vangle_raw, hangle_raw = self._shadow
-        except:
-            return dict(
-                tilt=0,
-                pan=0,
-            )
+            except Exception as exc:
+                print("[Aimer] Horizontal servo feedback error:", exc)
+                raise RuntimeError("Horizontal servo: " + str(exc).replace("[TxRxResult] ", ""))
+        else:
+            vangle_raw, hangle_raw = self._shadow
 
         return dict(
             tilt=(vangle_raw - 180)/self.vgain,
@@ -236,27 +238,31 @@ class Detector:
         self._pd_pin = pd_pin
         # Add pull-down resistor to prevent floating state
         self._pd = Pin(pd_pin, Pin.IN, Pin.PULL_DOWN)
-        self._last_pulse = 0
-        # 150ms debounce (since ball passage < 100ms, this filters noise)
-        self._debounce = 0.15
+        self._last_pulse = None
+        self._pulse_count = 0
+        self._debounce_ms = 150
         self._pd.irq(trigger=Pin.IRQ_RISING, handler=self.handle_detection)
 
     def handle_detection(self, pin):
-        current_time = time.time()
+        current_time = time.ticks_ms()
         # Only register detection if enough time has passed since last one
-        if current_time - self._last_pulse > self._debounce:
+        if self._last_pulse is None or time.ticks_diff(current_time, self._last_pulse) >= self._debounce_ms:
             print("[Detector] detected ball")
             self._last_pulse = current_time
+            self._pulse_count = (self._pulse_count + 1) & 0x3fffffff
         # else: ignore spurious trigger
 
     def status(self):
+        now = time.ticks_ms()
         if DevFlags.simulation_mode:
             # In simulation mode, we simulate a detection every 2.15 seconds
-            if time.time() - self._last_pulse > 2.15:
-                self._last_pulse = time.time()
+            if self._last_pulse is None or time.ticks_diff(now, self._last_pulse) >= 2150:
+                self._last_pulse = now
+                self._pulse_count = (self._pulse_count + 1) & 0x3fffffff
                 print("[Detector] simulated ball detection")
 
-        return dict(elapsed=time.time() - self._last_pulse)
+        elapsed = 1000000000 if self._last_pulse is None else time.ticks_diff(now, self._last_pulse) / 1000
+        return dict(elapsed=elapsed, count=self._pulse_count)
 
 
 class Launcher:
@@ -649,6 +655,8 @@ class ESPNowRemote:
 
         # Status to broadcast
         self.status_callback = None
+        self.last_error = ""
+        self.error_id = 0
 
         # Track known peers for auto-adding
         self.known_peers = []
@@ -691,6 +699,7 @@ class ESPNowRemote:
         if msg_type == 'key_press':
             action_name = message.get('action')
             press_type = message.get('press_type', 'short')  # Default to short if not specified
+            self.last_error = ""
 
             if action_name in self.actions:
                 try:
@@ -722,6 +731,8 @@ class ESPNowRemote:
                         self.actions[action_name]()
 
                 except Exception as e:
+                    self.last_error = str(e)
+                    self.error_id = (self.error_id + 1) % 10000
                     print(f"[ESPNowRemote] Error executing {action_name}: {e}")
             else:
                 print(f"[ESPNowRemote] No action bound for: {action_name}")

@@ -51,6 +51,7 @@ The RoboPong hardware consists of:
 - **main.py**: Entry point for the application, starts the web server and WebREPL.
 - **webmain.py**: Implements the web server and JSON-RPC API.
 - **parts.py**: Defines classes for the hardware components (Aimer, Feeder, Launcher, ESC, Shaker).
+- **drill_store.py**: Persists shared preset and drill slots on the robot controller.
 - **servo.py**: Implements the Servo class for controlling servo motors.
 - **ujrpc.py**: Implements a JSON-RPC service for remote control.
 - **dev.py**: Contains development flags for simulation mode.
@@ -119,6 +120,8 @@ The ESP32 provides a JSON-RPC API for remote control. The following methods are 
 - **interrupt**: Shuts down the web server.
 - **enable_simulation**: Enables simulation mode.
 - **disable_simulation**: Disables simulation mode.
+- **list_presets**, **save_preset**, **delete_preset**, **apply_preset**: Manage and apply shared preset slots.
+- **list_sequences**, **save_sequence**, **delete_sequence**, **start_saved_sequence**: Manage and run saved drills.
 
 ## Testing
 

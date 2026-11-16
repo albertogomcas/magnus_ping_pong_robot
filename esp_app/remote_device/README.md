@@ -51,7 +51,7 @@ Summary:
 
 ## Layers
 
-The remote has 3 layers accessible by pressing `*` (asterisk key).
+The remote has 6 layers accessible by pressing `*` (asterisk key).
 
 ### Layer 0 - AIM
 Control the ball launcher aim and feeding.
@@ -89,10 +89,52 @@ Adjust speed and timing settings.
 - **#**: Start/Stop Launcher
 - **\***: Switch Layer
 
+### Layer 3 - PRESET
+Save and recall the robot's 9 shared preset slots.
+
+- **1-9**: Recall preset slot
+- **Hold 1-9**: Save current settings in that slot
+- **0**: Feed One Ball
+- **\***: Switch Layer
+
+Recalling a preset applies its settings but leaves the launcher and feeder stopped.
+
+### Layer 4 - BUILD
+Build a drill from saved preset slots.
+
+- **1-9**: Append that preset to the draft
+- **Hold 1-9**: Save the draft as a drill in that slot
+- **0**: Remove the last step
+- **Hold 0**: Clear the draft
+- **\***: Switch Layer
+
+### Layer 5 - DRILL
+Run saved drills.
+
+- **1-9**: Start that drill in order
+- **Hold 1-9**: Start that drill in random order
+- **0**: Feed One Ball
+- **Hold 0**: Toggle looping
+- **#**: Stop the drill and halt launcher and feeder
+- **\***: Switch Layer
+
+Each drill step advances when a ball is detected or when the current feed
+interval elapses, whichever comes first (after a 0.5-second settling delay).
+The drill continues on the timer even if no ball is detected.
+
+The OLED shows the current mode, drill state, loop setting, and builder step count.
+Robot and send errors appear on the OLED for four seconds. If an aim servo's
+feedback cannot be read, the aim values show `--` and aim adjustments that
+require feedback are rejected until the read succeeds.
+The handheld remote communicates directly with the robot controller over
+ESP-NOW; it has no dependency on the WebUI. Remote presets and drills are stored
+on the robot controller in `drills.json`. The WebUI's existing preset file and
+workflow remain separate.
+
 ## Display
 
 The OLED display shows:
-- **Yellow band** (top 16px): Current layer name (AIM/SPIN/SPEED) and battery indicator (5-bar graph)
+- **Yellow band** (top 16px): Current layer name and battery indicator (5-bar graph)
 - **White area**: 
   - Launcher status (ACTIVE/STANDBY)
   - Current speed percentage
@@ -105,7 +147,7 @@ The OLED display shows:
   - Graphical battery indicator (5 bars)
   - Automatic deep sleep after 60 seconds of inactivity
   - Low power consumption
-- **Three-Layer Interface**: Quick access to all controls
+- **Six-Layer Interface**: Quick access to controls, presets, and drills
 - **Debounced Keypad**: Reliable key detection with 200ms debounce
 
 ## Testing

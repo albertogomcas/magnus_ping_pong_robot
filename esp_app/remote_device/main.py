@@ -24,6 +24,13 @@ except ImportError:
 # Configuration
 RECEIVER_MAC = b'\xb0\xa7\x32\x32\x73\x1c'  # TODO: Replace with actual receiver MAC address
 LOW_BATTERY_THRESHOLD = 3.3  # volts
+ERROR_DISPLAY_MS = 4000
+STATUS_FIELDS = {
+    'a': 'launcher_active', 's': 'speed', 'sa': 'spin_angle',
+    'ss': 'spin_strength', 't': 'tilt', 'p': 'pan', 'i': 'interval',
+    'q': 'sequence', 'd': 'sequence_draft_length', 'l': 'sequence_loop',
+    'm': 'remote_message',
+}
 
 class RemoteController:
     def __init__(self):
@@ -82,6 +89,9 @@ class RemoteController:
             'pan': 0,
             'interval': 4.0,
         }
+        self.error_message = ""
+        self.error_started = 0
+        self.last_robot_error = None
 
         # Layer definitions: key -> action_name
         self.layers = {
@@ -120,12 +130,31 @@ class RemoteController:
                 '*': 'layer_switch',
                 '#': 'toggle_activation',
             },
+            3: {  # Preset slots: short press recalls, long press saves
+                str(slot): 'preset_slot_' + str(slot) for slot in range(1, 10)
+            },
+            4: {  # Drill builder: add preset slots, hold a number to save the drill
+                str(slot): 'append_preset_' + str(slot) for slot in range(1, 10)
+            },
+            5: {  # Drill runner: hold a number for random order
+                str(slot): 'start_sequence_' + str(slot) for slot in range(1, 10)
+            },
         }
+        self.layers[3].update({'0': 'feed_one', '*': 'layer_switch'})
+        self.layers[4].update({'0': 'remove_sequence_step', '*': 'layer_switch'})
+        self.layers[5].update({
+            '0': 'feed_one',
+            '*': 'layer_switch',
+            '#': 'stop_sequence',
+        })
 
         self.layer_names = {
             0: 'AIM',
             1: 'SPIN',
             2: 'SPEED',
+            3: 'PRESET',
+            4: 'BUILD',
+            5: 'DRILL',
         }
 
     def _show_startup(self, message):
@@ -174,6 +203,17 @@ class RemoteController:
             self.switch_layer()
             return
 
+        if self.current_layer == 3 and key in '123456789':
+            action = ('save_preset_' if press_type == 'long' else 'apply_preset_') + key
+        elif self.current_layer == 4 and key in '123456789':
+            action = ('save_sequence_' if press_type == 'long' else 'append_preset_') + key
+        elif self.current_layer == 4 and key == '0' and press_type == 'long':
+            action = 'clear_sequence_draft'
+        elif self.current_layer == 5 and key in '123456789':
+            action = ('start_random_sequence_' if press_type == 'long' else 'start_sequence_') + key
+        elif self.current_layer == 5 and key == '0' and press_type == 'long':
+            action = 'toggle_sequence_loop'
+
         if action:
             # Send key press to receiver with press type
             message = {
@@ -184,8 +224,10 @@ class RemoteController:
                 'press_type': press_type,
                 'timestamp': time.time(),
             }
-            self.sender.send(message)
-            print(f"[Remote] Sent action: {action} ({press_type})")
+            if not self.sender.send(message):
+                self.show_error("Cannot send to robot")
+            else:
+                print(f"[Remote] Sent action: {action} ({press_type})")
 
             # Visual feedback
             self.display.flash_key(key)
@@ -197,6 +239,9 @@ class RemoteController:
 
     def update_display(self):
         """Update OLED display"""
+        if self.error_message:
+            self.display.show_error(self.error_message)
+            return
         battery_voltage = self.get_battery_voltage()
         layer_name = self.layer_names[self.current_layer]
         key_labels = self.get_current_key_labels()
@@ -208,6 +253,29 @@ class RemoteController:
             status=self.status,
             battery_voltage=battery_voltage,
         )
+
+    def show_error(self, message):
+        self.error_message = message
+        self.error_started = time.ticks_ms()
+        self.update_display()
+
+    def clear_expired_error(self):
+        if self.error_message and time.ticks_diff(time.ticks_ms(), self.error_started) >= ERROR_DISPLAY_MS:
+            self.error_message = ""
+            self.update_display()
+
+    def handle_status(self, status):
+        for short_name, name in STATUS_FIELDS.items():
+            if short_name in status:
+                self.status[name] = status[short_name]
+            elif name in status:
+                self.status[name] = status[name]
+        error = status.get('e', status.get('remote_error', ''))
+        error_key = (status.get('n', 0), error) if error else None
+        if error_key and error_key != self.last_robot_error:
+            self.show_error(error)
+        self.last_robot_error = error_key
+        self.update_display()
 
     def get_current_key_labels(self):
         """Get abbreviated labels for current layer keys"""
@@ -238,6 +306,12 @@ class RemoteController:
             'decrease_spin': 'SPN-',
             'interval_up': 'INT+',
             'interval_down': 'INT-',
+            'preset_slot_1': 'LOAD',
+            'append_preset_1': 'ADD',
+            'remove_sequence_step': 'UNDO',
+            'start_sequence_1': 'RUN',
+            'stop_sequence': 'STOP',
+            'toggle_sequence_loop': 'LOOP',
         }
 
         # Create 3x4 grid of labels
@@ -246,7 +320,16 @@ class RemoteController:
         for key in keys:
             action = layer.get(key, '')
             labels[key] = label_map.get(action, '')
-
+            if self.current_layer == 3 and key in '123456789':
+                labels[key] = 'LOAD'
+            elif self.current_layer == 4 and key in '123456789':
+                labels[key] = 'ADD'
+            elif self.current_layer == 4 and key == '0':
+                labels[key] = 'UNDO'
+            elif self.current_layer == 5 and key in '123456789':
+                labels[key] = 'RUN'
+            elif self.current_layer == 5 and key == '0':
+                labels[key] = 'LOOP'
         return labels
 
 
@@ -274,12 +357,10 @@ class RemoteController:
                 msg_count += 1
                 print(f"[Remote] Received status #{msg_count}: type={status.get('type')}")
                 if status.get('type') == 'status_response':
-                    print(f"[Remote] Status data: speed={status.get('speed')}, launcher_active={status.get('launcher_active')}")
-                    self.status.update(status)
-                    print(f"[Remote] Updated internal status: {self.status}")
-                    self.update_display()
+                    self.handle_status(status)
                 else:
                     print(f"[Remote] Ignoring message with type: {status.get('type')}")
+            self.clear_expired_error()
             await asyncio.sleep(0.05)  # Faster polling for quicker status updates
 
     async def keypad_loop(self):

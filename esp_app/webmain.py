@@ -293,8 +293,45 @@ def start_sequence(r, settings):
 
 @jrpc.fn(name="stop_sequence")
 def stop_sequence(r):
-    #print("Stop sequence")
     magnus.stop_sequence()
+    return status(r)
+
+@jrpc.fn(name="list_presets")
+def list_presets(r):
+    return magnus.drill_store.list_presets()
+
+@jrpc.fn(name="save_preset")
+def save_preset(r, slot, name, preset):
+    return magnus.drill_store.save_preset(slot, name, preset)
+
+@jrpc.fn(name="delete_preset")
+def delete_preset(r, slot):
+    return magnus.drill_store.delete_preset(slot)
+
+@jrpc.fn(name="apply_preset")
+def apply_preset(r, slot):
+    return magnus.apply_preset(slot)
+
+@jrpc.fn(name="list_sequences")
+def list_sequences(r):
+    return magnus.drill_store.list_sequences()
+
+@jrpc.fn(name="save_sequence")
+def save_sequence(r, slot, name, preset_slots):
+    return magnus.drill_store.save_sequence(slot, name, preset_slots)
+
+@jrpc.fn(name="delete_sequence")
+def delete_sequence(r, slot):
+    return magnus.drill_store.delete_sequence(slot)
+
+@jrpc.fn(name="start_saved_sequence")
+def start_saved_sequence(r, slot, randomize_order=False, loop=True, feed_interval=None):
+    magnus.start_saved_sequence(
+        slot,
+        randomize_order=randomize_order,
+        loop=loop,
+        feed_interval=feed_interval,
+    )
     return status(r)
 
 @jrpc.fn(name="reset")

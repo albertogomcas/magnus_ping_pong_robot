@@ -27,7 +27,7 @@ class OLEDDisplay:
 
         # Status symbol (▶ for active, ■ for standby) next to layer name
         status_symbol = '>>>' if status.get('launcher_active') else 'STP'
-        self.oled.text(status_symbol, 42, 4)
+        self.oled.text(status_symbol, 55, 4)
 
         # Battery indicator on right side of title
         self._draw_battery_indicator(battery_voltage, 98, 3)
@@ -44,7 +44,33 @@ class OLEDDisplay:
             self._draw_spin_info(status)
         elif layer_num == 2:  # SPEED layer
             self._draw_speed_info(status)
+        elif layer_num == 3:  # PRESET layer
+            self.oled.text("1-9 load preset", 0, 24)
+            self.oled.text("Hold 1-9 to save", 0, 36)
+            self.oled.text(status.get("remote_message", "")[:16], 0, 50)
+        elif layer_num == 4:  # BUILD layer
+            self.oled.text("Steps: {}".format(status.get("sequence_draft_length", 0)), 0, 24)
+            self.oled.text("1-9 add", 0, 36)
+            self.oled.text("Hold 1-9 save", 0, 48)
+            self.oled.text("0 undo; H0 clear", 0, 56)
+        elif layer_num == 5:  # DRILL layer
+            state = "RUN" if status.get("sequence") else "STOP"
+            loop_state = "LOOP" if status.get("sequence_loop", True) else "ONCE"
+            self.oled.text("D: " + state + " " + loop_state, 0, 24)
+            self.oled.text("1-9 run", 0, 36)
+            self.oled.text("Hold 1-9 random", 0, 48)
+            self.oled.text("Hold0 loop #stop", 0, 56)
 
+        self.oled.show()
+
+    def show_error(self, message):
+        self.oled.fill(0)
+        self.oled.text("ROBOT ERROR", 0, 4)
+        self.oled.hline(0, 16, 128, 1)
+        for index in range(3):
+            line = message[index * 16:(index + 1) * 16]
+            if line:
+                self.oled.text(line, 0, 21 + index * 12)
         self.oled.show()
 
     def _draw_aim_info(self, status):
@@ -53,12 +79,12 @@ class OLEDDisplay:
 
         # Vertical aim (tilt)
         tilt = status.get('tilt', 0)
-        self.oled.text(f"Vert: {tilt:.1f}", 0, y_pos)
+        self.oled.text("Vert: --" if tilt is None else f"Vert: {tilt:.1f}", 0, y_pos)
 
         # Horizontal aim (pan)
         y_pos += 12
         pan = status.get('pan', 0)
-        self.oled.text(f"Horiz: {pan:.1f}", 0, y_pos)
+        self.oled.text("Horiz: --" if pan is None else f"Horiz: {pan:.1f}", 0, y_pos)
 
 
     def _draw_spin_info(self, status):

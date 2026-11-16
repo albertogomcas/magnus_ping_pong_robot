@@ -99,8 +99,8 @@ def test_init(aimer_setup):
     assert aimer.hservo == hservo
     assert aimer.vgain == -4
     assert aimer.hgain == -4
-    assert aimer.vspeed == 50
-    assert aimer.hspeed == 50
+    assert aimer.vspeed == 100
+    assert aimer.hspeed == 100
     assert aimer.vlim_min == -25
     assert aimer.vlim_max == 35
     assert aimer.hlim_min == -15
@@ -191,12 +191,8 @@ def test_status_exception(aimer_setup):
     # Make servo.status() raise an exception
     vservo.status.side_effect = Exception("Test exception")
 
-    # Get status
-    status = aimer.status()
-
-    # Check default values are returned
-    assert status["tilt"] == 0
-    assert status["pan"] == 0
+    with pytest.raises(RuntimeError, match="Vertical servo: Test exception"):
+        aimer.status()
 
 def test_calibrate(aimer_setup):
     # Unpack the fixture

@@ -10,6 +10,9 @@ The tests are organized by module:
 - `test_parts.py`: Tests for the parts.py module (Aimer, Feeder, ESC, Launcher classes)
 - `test_servo.py`: Tests for the servo.py module (Servo class)
 - `test_webmain.py`: Tests for the webmain.py module (RPC endpoints and utility functions)
+- `test_drill_store.py`: Tests for persistent preset and drill storage
+- `test_magnus_sequence.py`: Tests for drill start/stop lifecycle
+- `test_remote_drill_modes.py`: Tests for keypad-to-drill action mapping
 
 ## Running the Tests
 

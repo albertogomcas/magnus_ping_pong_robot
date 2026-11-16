@@ -51,27 +51,21 @@ class STServo:
 
     def status(self):
         sts_present_position, sts_present_speed, sts_comm_result, sts_error = self.sts.ReadPosSpeed(self.servo_id)
-        if sts_comm_result != COMM_SUCCESS:
-            print(self.sts.getTxRxResult(sts_comm_result))
-        else:
-            angle = self._convert_to_angle(sts_present_position)
-            angular_speed = self._convert_to_angle(sts_present_speed)
-            #print(f"[ID:{self.servo_id}] Angle:{angle:.1f} deg Spd:{angular_speed:.2f} deg/s")
-
-            status = dict(
-                servo_id=self.servo_id,
-                angle=angle,
-                speed=angular_speed,
-                moving=self.is_moving(),
-            )
-            return status
+        self._check(sts_comm_result)
         if sts_error != 0:
-            print(self.sts.getRxPacketError(sts_error))
+            raise RuntimeError(self.sts.getRxPacketError(sts_error))
+        angle = self._convert_to_angle(sts_present_position)
+        angular_speed = self._convert_to_angle(sts_present_speed)
+        return dict(
+            servo_id=self.servo_id,
+            angle=angle,
+            speed=angular_speed,
+            moving=self.is_moving(),
+        )
 
     def is_moving(self):
         moving, comm, err = self.sts.ReadMoving(self.servo_id)
-        if comm != COMM_SUCCESS:
-            raise Exception(self.sts.getTxRxResult(comm))
+        self._check(comm)
         if err != 0:
             raise Exception(self.sts.getRxPacketError(err))
         return bool(moving)

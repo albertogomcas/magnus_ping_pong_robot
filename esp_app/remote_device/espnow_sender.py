@@ -78,7 +78,9 @@ class ESPNowSender:
         """
         try:
             json_msg = json.dumps(message)
-            self.esp.send(self.receiver_mac, json_msg)
+            if self.esp.send(self.receiver_mac, json_msg) is False:
+                print("[ESPNow] Robot did not acknowledge the message")
+                return False
             print(f"[ESPNow] Sent: {json_msg[:50]}...")  # Show first 50 chars
             return True
         except Exception as e:
