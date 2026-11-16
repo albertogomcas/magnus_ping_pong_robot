@@ -5,6 +5,7 @@ import json
 import os
 import network
 from secrets import Wifi
+from wifi_probe import connect_strongest
 import time
 
 def exists(path):
@@ -17,16 +18,10 @@ def exists(path):
 def connect():
     nic = network.WLAN(network.STA_IF)
     nic.active(True)
-    nic.connect(Wifi.ssid, Wifi.password)
     nic.ifconfig(('10.0.0.47', '255.255.255.0', '10.0.0.138', '8.8.8.8'))
+    connect_strongest(nic, Wifi)
     print(f"{nic.isconnected()=}")
     print(f"{nic.ifconfig()=}")
-    start = time.time()
-    while time.time() - start < 10:
-        if nic.isconnected():
-            break
-    else:
-        raise RuntimeWarning("Could not connect to network")
 
 
 try:
@@ -59,10 +54,14 @@ try:
     _tmp.deinit()
 except:
     pass
+_servo_uart = UART(1, baudrate=1000000,
+                   tx=Pin(23),  # UsedPins.ST_SERVO_TX
+                   rx=Pin(22),  # UsedPins.ST_SERVO_RX
+                   rxbuf=512, txbuf=256)
+gc.collect()
+# Connect before loading the larger application modules, while memory is available.
+connect()
 import magnus
-magnus._preallocated_uart = UART(1, baudrate=1000000,
-                                  tx=Pin(23),  # UsedPins.ST_SERVO_TX
-                                  rx=Pin(22),  # UsedPins.ST_SERVO_RX
-                                  rxbuf=512, txbuf=256)
+magnus._preallocated_uart = _servo_uart
 print("[boot] UART pre-allocated OK")
 

@@ -8,6 +8,7 @@ from magnus import UsedPins, Magnus
 from ujrpc import JRPCService
 import asyncio
 from secrets import Wifi
+from wifi_probe import connect_strongest
 
 UsedPins.sanity_check()
 import gc
@@ -21,15 +22,9 @@ magnus = Magnus()
 print("[Webmain] Connecting WiFi...")
 nic = network.WLAN(network.STA_IF)
 nic.active(True)
-nic.ifconfig(('10.0.0.47', '255.255.255.0', '10.0.0.138', '8.8.8.8'))
-nic.connect(Wifi.ssid, Wifi.password)
-start = time.time()
-while time.time() - start < 10:
-    if nic.isconnected():
-        break
-    time.sleep(0.1)
-else:
-    raise RuntimeWarning("Could not connect to network")
+if not nic.isconnected():
+    nic.ifconfig(('10.0.0.47', '255.255.255.0', '10.0.0.138', '8.8.8.8'))
+    connect_strongest(nic, Wifi)
 print(f"[Webmain] WiFi connected, channel={nic.config('channel')}")
 
 # 3. Initialize ESP-NOW remote now that WiFi channel is known

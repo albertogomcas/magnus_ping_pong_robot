@@ -73,7 +73,12 @@ The RoboPong hardware consists of:
    class Wifi:
        ssid = "your_ssid"
        password = "your_password"
+       ssid_alternate = "your_other_ssid"  # optional
+       password_alternate = "your_other_password"
    ```
+   At startup the robot scans for configured networks and tries the strongest
+   first, then the other if connection fails. Its static IP configuration in
+   `esp_app/webmain.py` must be valid on both networks.
 4. Connect the hardware components according to the pin assignments in `webmain.py`.
 5. Reset the ESP32 to start the application.
 

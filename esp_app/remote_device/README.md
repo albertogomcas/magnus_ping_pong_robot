@@ -137,6 +137,12 @@ main()
 2. **Adjust Battery Calibration**: Modify voltage divider ratio in `get_battery_voltage()` if needed
 3. **Customize Inactivity Timeout**: Change `INACTIVITY_TIMEOUT` (default: 60 seconds)
 
+Configure `ssid`/`password` and optionally `ssid_alternate`/`password_alternate`
+in the remote's `secrets.py`. At startup it tries the strongest visible configured
+network first, then disconnects and uses that channel for ESP-NOW. If the robot
+is on a different channel or changes channels, the remote searches channels
+until the robot responds; controls may be unavailable during this search.
+
 ## Required Files
 
 - `main.py` - Main remote controller
@@ -146,6 +152,7 @@ main()
 - `ssd1306.py` - MicroPython SSD1306 library
 - `get_mac.py` - Utility to get device MAC address
 - `secrets.py` - WiFi credentials (optional, for channel auto-detection)
+- `wifi_probe.py` - shared WiFi selection helper, copied from the parent `esp_app/` directory
 
 ## Installation
 
@@ -160,6 +167,7 @@ main()
 
 3. **Upload Remote Device Files**
    - Upload all `.py` files from this directory
+   - Also upload `esp_app/wifi_probe.py` to the remote's root alongside `main.py`
 
 4. **Get MAC Address** (optional, for receiver configuration)
    ```python

@@ -52,13 +52,11 @@ class RemoteController:
         # ESP-NOW sender - auto-detect channel from WiFi connection
         # If WiFi credentials are available, connect briefly to get the channel
         # then disconnect and use that channel for ESP-NOW
-        if WIFI_AVAILABLE and Wifi.ssid:
-            print(f"[Remote] Auto-detecting WiFi channel from network: {Wifi.ssid}")
-            self._show_startup(f"WiFi: {Wifi.ssid[:14]}")
+        if WIFI_AVAILABLE and (getattr(Wifi, 'ssid', None) or getattr(Wifi, 'ssid_alternate', None)):
+            self._show_startup("Scanning WiFi")
             self.sender = ESPNowSender(
                 RECEIVER_MAC,
-                wifi_ssid=Wifi.ssid,
-                wifi_password=Wifi.password
+                wifi=Wifi,
             )
         else:
             print(f"[Remote] No WiFi credentials, using default channel 1")
@@ -263,7 +261,7 @@ class RemoteController:
     async def status_update_loop(self):
         """Periodically request status updates"""
         while True:
-            await self.request_status()
+            self.sender.probe_status()
             await asyncio.sleep(1)  # Request status every 1 second for faster sync
 
     async def status_receiver_loop(self):
